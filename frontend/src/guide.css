@@ -1,0 +1,8 @@
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; }
+.guide-card, .guide-note { padding: 24px; }
+.guide-card { display: flex; flex-direction: column; align-items: flex-start; }
+.guide-card h2 { margin: 0; font-size: 20px; }
+.guide-card p, .guide-note p { color: var(--text-secondary); font-size: 16px; line-height: 1.7; }
+.guide-card button { margin-top: auto; }
+.guide-note { margin-bottom: 24px; background: #edf4f2; }
+.guide-note p { margin-bottom: 0; }

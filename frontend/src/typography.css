@@ -1,0 +1,124 @@
+/* Shared readable type scale and secondary text contrast. */
+.workspace-button { width: calc(100% - 6px); text-align: left; color: inherit; cursor: pointer; flex-wrap: nowrap; }
+.workspace-button > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+.workspace-button .avatar, .workspace-button > svg { flex-shrink: 0; }
+.workspace-button:hover { background: #38575b; border-color: #77989b; }
+.workspace-button:focus-visible { outline: 2px solid #e2b794; outline-offset: 3px; }
+.profile-button { border: 0; width: 40px; height: 40px; font-size: 14px; color: #273c43; flex-shrink: 0; }
+.notifications { position: relative; }
+.notifications > summary { list-style: none; display: flex; cursor: pointer; padding: 8px; color: var(--ink); }
+.notifications > summary::-webkit-details-marker { display: none; }
+.notification-count { position: absolute; top: -4px; right: -5px; border-radius: 12px; background: #ae512d; color: white; padding: 1px 5px; font-size: 12px; }
+.notification-panel { position: absolute; top: calc(100% + 12px); right: 0; width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; z-index: 12; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 12px 36px #20383d30; }
+.notification-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notification-heading h2 { margin: 0; font-size: 20px; }
+.notification-panel > p { color: var(--text-secondary); font-size: 14px; }
+.notification-item { display: block; width: 100%; background: white; border: 0; border-bottom: 1px solid var(--line); text-align: left; padding: 16px 12px; color: var(--ink); border-radius: 6px; margin-top: 8px; }
+.notification-item.unread { background: #edf4f2; }
+.notification-item:hover { background: #dfece7; }
+.notification-item strong, .notification-item span, .notification-item small { display: block; overflow-wrap: anywhere; }
+.notification-item span, .notification-item small { margin-top: 6px; color: var(--text-secondary); font-size: 14px; }
+@media (max-width: 700px) {
+  .notification-panel { position: fixed; top: 70px; right: 16px; }
+}
+.document-property-filter { max-width: min(360px, 100%); text-overflow: ellipsis; }
+.tenant-row {
+  grid-template-columns: 40px minmax(120px, 1fr) minmax(180px, 1.6fr) 125px 18px 28px;
+  align-items: start;
+}
+.tenant-row > div:nth-child(2), .tenant-row > div:nth-child(3) { padding-top: 2px; }
+.tenant-row > .status { grid-column: 4; }
+.tenant-row > .property-actions { grid-column: 6; }
+.monthly-row { grid-template-columns: minmax(200px, 2fr) repeat(7, minmax(115px, 1fr)) 85px; min-width: 1180px; }
+.finance-modal { max-width: 580px; }
+.finance-toolbar input { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); }
+.form-error { color: #a13d3d; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 1100px) {
+  .tenant-row { grid-template-columns: 40px minmax(0, 1fr) 28px; }
+  .tenant-row > .tenant-avatar { grid-column: 1; grid-row: 1; }
+  .tenant-row > div:nth-child(2) { grid-column: 2; grid-row: 1; }
+  .tenant-row > div:nth-child(3) { grid-column: 2; grid-row: 2; }
+  .tenant-row > .status { grid-column: 2; grid-row: 3; }
+  .tenant-row > svg { display: none; }
+  .tenant-row > .property-actions { grid-column: 3; grid-row: 1; }
+}
+:root {
+  --text-secondary: #4f666b;
+  --muted: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1.5;
+}
+.page-heading h1 { font-size: clamp(32px, 3vw, 38px); line-height: 1.2; }
+.eyebrow, .nav-label, .sidebar-footer { font-size: 13px; }
+.subheading, .breadcrumbs, .nav-item, .workspace strong,
+.primary-btn, .secondary-btn, .text-btn, .select-btn,
+.top-search input, .list-search input, .filter-select, .month-picker select,
+.modal label, .modal input, .modal select, .modal-head p,
+.settings-card label, .settings-card input, .settings-card select,
+.settings-card p, .property-action-menu button, .toast { font-size: 16px; }
+.card-head h2, .list-title, .settings-card h2,
+.chart-card .card-head h2, .expense-card .card-head h2,
+.occupancy-card .card-head h2, .report-card .card-head h2 { font-size: 20px; }
+.card-head p, .list-subtitle, .search-hint,
+.chart-card .card-head p, .expense-card .card-head p,
+.occupancy-card .card-head p, .report-card .card-head p,
+.mini-stat > span, .mini-stat > small, .metric-label,
+.metric-change span, .metric-change small, .occupancy-number span,
+.legend, .category, .report-note, .report-up,
+.finance-toolbar, .month-picker, .empty-state { font-size: 15px; line-height: 1.6; }
+.metric > strong, .mini-stat > strong, .report-number { font-size: 32px; line-height: 1.25; }
+.occupancy-number strong { font-size: 36px; }
+.chart-total { font-size: 18px; }
+.table-row, .table-row > strong, .property-name strong,
+.simple-property, .tenant-row, .document-row, .finance-row,
+.mix-row, .report-row, .transaction-detail strong,
+.positive, .negative { font-size: 15px; }
+.table-header, .finance-header { font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.table-row small, .property-name small, .simple-property small,
+.tenant-row small, .document-row small, .transaction-detail small,
+.transaction-row > small, .badge, .status, .workspace small,
+.help-card p, .help-card button, .help-card strong { font-size: 14px; line-height: 1.5; }
+.subheading, .eyebrow, .breadcrumbs, .card-head p, .list-subtitle,
+.metric-label, .metric-change small, .mini-stat > span, .mini-stat > small,
+.legend, .category, .search-hint, .table-header, .finance-header,
+.table-row small, .property-name small, .simple-property small,
+.tenant-row small, .document-row small, .document-date,
+.transaction-detail small, .transaction-row > small, .report-note,
+.settings-card p, .modal-head p, .empty-state { color: var(--text-secondary); }
+.select-btn, .secondary-btn, .filter-select, .month-picker,
+.finance-toolbar, .list-search, .modal label, .muted-icon { color: var(--text-secondary); }
+input::placeholder { color: #596e73; opacity: 1; }
+.nav-label, .sidebar-footer, .workspace small, .help-card p { color: #bed0d0; }
+.nav-item { color: #d2dfdf; }
+.nav-item.active { color: white; }
+.primary-btn { background: #ae512d; color: white; }
+.primary-btn:hover { background: #934124; }
+.text-btn { color: #a14b2a; }
+.profit, .positive, .metric-change span.green, .metric-change span.blue { color: #287254; }
+.negative, .metric-change span.orange { color: #a34f29; }
+.metric-change span.purple { color: #76558f; }
+.top-search input { width: 210px; }
+.list-search input { width: 260px; }
+.workspace { flex-wrap: wrap; }
+.metric-change { flex-wrap: wrap; }
+.card-head { gap: 16px; flex-wrap: wrap; }
+.table-row { gap: 14px; padding: 18px 0; }
+.transaction-row { grid-template-columns: 36px minmax(0, 1fr) auto 56px; gap: 12px; padding: 16px 0; }
+.property-action-menu { width: 185px; }
+.status { white-space: normal; }
+.finance-row { min-width: 940px; }
+.report-row { flex-wrap: wrap; }
+.report-track { min-width: 100px; }
+@media (max-width: 1000px) {
+  .top-search input { width: 170px; }
+}
+@media (max-width: 700px) {
+  .list-search input { width: 100%; }
+  .metric > strong, .mini-stat > strong { font-size: 28px; }
+  .table-row { grid-template-columns: minmax(0, 1fr) 90px 28px; gap: 8px; }
+  .transaction-row { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .transaction-row > small { grid-column: 2; }
+  .page-heading h1 { font-size: 32px; }
+  .modal { padding: 20px; }
+}

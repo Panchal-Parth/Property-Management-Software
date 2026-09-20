@@ -1,0 +1,21 @@
+[Unit]
+Description=Havenly rental manager
+After=network.target
+
+[Service]
+User=havenly
+Group=havenly
+WorkingDirectory=/opt/havenly/backend
+EnvironmentFile=/etc/havenly.env
+ExecStart=/opt/havenly/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/havenly
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Back up Havenly database and private documents
+
+[Service]
+Type=oneshot
+User=havenly
+Group=havenly
+WorkingDirectory=/opt/havenly/backend
+EnvironmentFile=/etc/havenly.env
+ExecStart=/opt/havenly/backend/.venv/bin/python scheduled_backup.py /var/backups/havenly
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/havenly /var/backups/havenly

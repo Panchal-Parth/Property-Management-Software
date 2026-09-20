@@ -1,0 +1,50 @@
+.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.auth-card { width: min(100%, 480px); padding: 36px; }
+.auth-brand { color: var(--ink); margin: 0 0 24px; }
+.auth-card h1 { font-size: 30px; line-height: 1.25; }
+.auth-card label, .editor label { display: block; margin: 18px 0; color: var(--ink); font-size: 16px; }
+.auth-card input, .editor input, .editor select, .editor textarea { display: block; width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #bacbc5; border-radius: 7px; background: white; color: var(--ink); font: inherit; }
+.editor textarea { min-height: 100px; }
+.editor small { display: block; color: var(--text-secondary); margin-top: 6px; font-size: 14px; }
+.editor { border: 1px solid var(--line); border-radius: 16px; width: min(580px, calc(100% - 24px)); max-height: 90vh; padding: 28px; color: var(--ink); }
+.editor::backdrop { background: #20383d80; }
+.editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.editor select[multiple] { min-height: 120px; }
+.live-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+.live-row > div { min-width: 0; }
+.live-row strong, .live-row small { display: block; overflow-wrap: anywhere; }
+.live-row small { color: var(--text-secondary); font-size: 14px; margin-top: 6px; }
+.live-row .property-actions { flex-shrink: 0; }
+.tenant-live { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) 32px; }
+.tenant-live p { margin: 0 0 12px; }
+.property-section, .report-comparison { margin-bottom: 24px; margin-top: 20px; }
+.live-toolbar { margin: 0 0 24px; align-items: flex-end; }
+.control { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--text-secondary); max-width: 100%; }
+.control input, .control select { font: inherit; font-size: 16px; background: white; color: var(--ink); border: 1px solid #bacbc5; padding: 10px; border-radius: 7px; max-width: 320px; }
+.scroll-table { overflow: auto; }
+.scroll-table table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.scroll-table th { color: var(--text-secondary); font-size: 14px; text-align: left; }
+.scroll-table th, .scroll-table td { padding: 16px 12px; border-bottom: 1px solid var(--line); min-width: 120px; }
+.scroll-table small { display: block; color: var(--text-secondary); }
+.error-banner { background: #fff0ec; border: 1px solid #e8b6a7; padding: 16px; margin-bottom: 18px; border-radius: 8px; color: #87391d; overflow-wrap: anywhere; }
+.live-notifications { position: fixed; right: 24px; top: 76px; z-index: 10; width: min(430px, calc(100% - 32px)); padding: 24px; max-height: 75vh; overflow-y: auto; }
+.guide-step { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.lease-block { padding-bottom: 18px; }
+.property-actions summary { min-width: 32px; min-height: 32px; }
+.sidebar { min-height: 100vh; }
+.main-content h2 { font-size: 21px; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+@media(max-width: 700px) {
+  .live-row { flex-wrap: wrap; }
+  .tenant-live { grid-template-columns: minmax(0,1fr) 32px; }
+  .tenant-live > div:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .tenant-live > .property-actions { grid-column: 2; grid-row: 1; }
+  .control, .control select { width: 100%; max-width: none; }
+  .editor { padding: 20px; }
+}
+@media print {
+  .sidebar, .topbar, .live-toolbar, button, .toast, .property-actions { display: none !important; }
+  .page { padding: 0; }
+  .card { break-inside: avoid; }
+  .app-shell { display: block; background: white; }
+}

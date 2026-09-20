@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+*.sqlite3*
+*.db*
+backend/data/
+backups/
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+.DS_Store
+*.pem
+*.key
