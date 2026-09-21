@@ -10,7 +10,10 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     const detail = typeof error.detail === 'string' ? error.detail
-      : Array.isArray(error.detail) ? error.detail.map((e: { msg: string }) => e.msg).join('; ')
+      : Array.isArray(error.detail) ? error.detail.map((e: { msg: string; loc?: (string | number)[] }) => {
+        const field = e.loc?.filter(part => part !== 'body').join(' → ').replaceAll('_', ' ')
+        return field ? `${field}: ${e.msg}` : e.msg
+      }).join('; ')
       : 'Request failed. Check the backend and try again.'
     if (response.status === 401) window.dispatchEvent(new Event('havenly:unauthorized'))
     throw new Error(detail)

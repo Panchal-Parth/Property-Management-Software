@@ -37,8 +37,20 @@ def migrate():
         for path in sorted((BASE / "migrations").glob("*.sql")):
             if not c.execute("SELECT 1 FROM schema_migrations WHERE version=?", (path.name,)).fetchone():
                 # Migration filenames are repository-owned, never user input.
-                c.executescript("BEGIN IMMEDIATE;\n" + path.read_text() +
-                                "\nINSERT INTO schema_migrations(version) VALUES ('" + path.name + "');\nCOMMIT;")
+                # SQLite table rebuilds require foreign keys off outside the transaction.
+                # Validate every relationship before committing the rebuilt schema.
+                c.execute("PRAGMA foreign_keys=OFF")
+                try:
+                    c.executescript("BEGIN IMMEDIATE;\n" + path.read_text())
+                    if c.execute("PRAGMA foreign_key_check").fetchall():
+                        raise ValueError("Migration would break foreign keys: " + path.name)
+                    c.execute("INSERT INTO schema_migrations(version) VALUES (?)", (path.name,))
+                    c.commit()
+                except Exception:
+                    c.rollback()
+                    raise
+                finally:
+                    c.execute("PRAGMA foreign_keys=ON")
     DB.chmod(0o600)
 
 

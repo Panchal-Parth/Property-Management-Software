@@ -1,32 +1,29 @@
-# React + TypeScript + Vite
+# Havenly frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React, TypeScript, and Vite client for the single-owner rental management app.
+For backend setup, email configuration, data privacy, backups, and deployment,
+see the [project README](../README.md).
 
-Currently, two official plugins are available:
+From this directory:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm ci
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open http://localhost:5173. The development server proxies `/api` to
+`http://127.0.0.1:8000` by default. Set `HAVENLY_API_TARGET` before `npm run dev`
+if your backend uses another address. Start the backend separately from its own
+directory with `uvicorn main:app --reload --host 127.0.0.1 --port 8000`.
+
+Checks:
+
+```sh
+npm run build
+npm run lint
+PLAYWRIGHT_CHANNEL=chrome npm run test:e2e
+```
+
+The browser tests create a temporary, fictional portfolio and use separate local
+test servers; they do not touch the real owner database. The Chrome channel is
+useful on macOS 13 where the bundled Playwright Chromium may be unavailable.

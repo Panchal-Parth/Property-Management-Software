@@ -1,4 +1,6 @@
 import json
+import hashlib
+import hmac
 import os
 import secrets
 import sqlite3
@@ -14,6 +16,8 @@ from fastapi.staticfiles import StaticFiles
 
 from db import BASE, UPLOADS, connect, migrate, rows
 from schemas import DocumentIn, DepositIn, LeaseIn, Login, MonthlyIn, PropertyIn, SettingsIn, TenantIn, UnitIn
+from schemas import CodeConfirm, EmailChange, EmailRequest, NotificationDismissIn, PasswordChange, PasswordReset, SignupRequest
+import email_delivery
 from security import password_hash, token_hash, verify_password
 
 PRODUCTION = os.getenv("HAVENLY_ENV") == "production"
@@ -52,7 +56,7 @@ async def headers(request, call_next):
         response.headers["Cache-Control"] = "no-store"
     if PRODUCTION:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     return response
 
 
@@ -120,7 +124,121 @@ def health(c=Depends(database)):
 
 @app.get("/api/auth/status")
 def auth_status(c=Depends(database)):
-    return {"configured": bool(c.execute("SELECT 1 FROM owners").fetchone())}
+    return {"configured": bool(c.execute("SELECT 1 FROM owners").fetchone()), "email_ready": email_delivery.configured()}
+
+
+def issue_code(c, request, purpose, destination, payload=''):
+    now = int(time.time())
+    address = request.client.host if request.client else 'unknown'
+    c.execute('DELETE FROM email_send_attempts WHERE attempted_at<?', (now - 3600,))
+    if c.execute('SELECT count(*) FROM email_send_attempts WHERE address=?', (address,)).fetchone()[0] >= 12:
+        raise HTTPException(429, 'Too many email requests. Try again in an hour.')
+    previous = c.execute('SELECT sent_at FROM email_challenges WHERE purpose=? AND destination=?', (purpose,destination)).fetchone()
+    if previous and now - previous['sent_at'] < 60:
+        raise HTTPException(429, 'Wait one minute before requesting another code.')
+    code = f'{secrets.randbelow(1_000_000):06d}'
+    salt = secrets.token_hex(16)
+    digest = hashlib.sha256((salt + code).encode()).hexdigest()
+    try:
+        email_delivery.send_code(destination, code, purpose)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    c.execute('INSERT INTO email_send_attempts VALUES (?,?)', (address, now))
+    c.execute('INSERT OR REPLACE INTO email_challenges(purpose,destination,code_hash,salt,payload,expires_at,sent_at,attempts) VALUES(?,?,?,?,?,?,?,0)',
+              (purpose,destination,digest,salt,payload,now+600,now))
+
+
+def consume_code(c, purpose, destination, code):
+    row = c.execute('SELECT * FROM email_challenges WHERE purpose=? AND destination=?', (purpose,destination)).fetchone()
+    if not row or row['expires_at'] < int(time.time()) or row['attempts'] >= 5:
+        raise HTTPException(400, 'Code expired or unavailable. Request a new code.')
+    c.execute('UPDATE email_challenges SET attempts=attempts+1 WHERE purpose=? AND destination=?', (purpose,destination))
+    c.commit()  # Preserve attempts even when a code is wrong.
+    actual = hashlib.sha256((row['salt'] + code).encode()).hexdigest()
+    if not hmac.compare_digest(row['code_hash'], actual):
+        raise HTTPException(400, 'Code incorrect. Try again or request a new one.')
+    return row['payload']
+
+
+@app.post('/api/auth/signup/request')
+def signup_request(body: SignupRequest, request: Request, c=Depends(database)):
+    if c.execute('SELECT 1 FROM owners').fetchone():
+        raise HTTPException(409, 'This single-owner workspace is already set up. Sign in or reset the password.')
+    issue_code(c, request, 'signup', body.email, json.dumps({'name':body.name,'password_hash':password_hash(body.password)}))
+    return {'ok': True}
+
+
+@app.post('/api/auth/signup/confirm')
+def signup_confirm(body: CodeConfirm, c=Depends(database)):
+    if c.execute('SELECT 1 FROM owners').fetchone():
+        raise HTTPException(409, 'This workspace is already set up.')
+    payload = json.loads(consume_code(c,'signup',body.email,body.code))
+    c.execute('INSERT INTO owners(id,email,name,password_hash) VALUES(1,?,?,?)', (body.email,payload['name'],payload['password_hash']))
+    c.execute('DELETE FROM email_challenges')
+    return {'ok': True}
+
+
+@app.post('/api/auth/reset/request')
+def reset_request(body: EmailRequest, request: Request, c=Depends(database)):
+    owner = c.execute('SELECT email FROM owners WHERE id=1').fetchone()
+    if owner and hmac.compare_digest(owner['email'].lower(),body.email):
+        issue_code(c, request, 'reset', body.email)
+    return {'ok': True, 'message': 'If this email is attached to the account, a code has been sent.'}
+
+
+@app.post('/api/auth/reset/confirm')
+def reset_confirm(body: PasswordReset, c=Depends(database)):
+    owner = c.execute('SELECT email FROM owners WHERE id=1').fetchone()
+    if not owner or not hmac.compare_digest(owner['email'].lower(),body.email):
+        raise HTTPException(400, 'Code expired or unavailable. Request a new code.')
+    consume_code(c,'reset',body.email,body.code)
+    c.execute('UPDATE owners SET password_hash=? WHERE id=1',(password_hash(body.password),))
+    c.execute('DELETE FROM sessions')
+    c.execute('DELETE FROM email_challenges')
+    return {'ok': True}
+
+
+@app.post('/api/auth/change-password/request')
+def change_password_request(request: Request, owner=Depends(require_owner), c=Depends(database)):
+    email = c.execute('SELECT email FROM owners WHERE id=1').fetchone()[0]
+    issue_code(c, request, 'change_password', email)
+    return {'ok': True}
+
+
+@app.post('/api/auth/change-password/confirm')
+def change_password_confirm(body: PasswordChange, owner=Depends(require_owner), c=Depends(database)):
+    email = c.execute('SELECT email FROM owners WHERE id=1').fetchone()[0]
+    consume_code(c,'change_password',email,body.code)
+    c.execute('UPDATE owners SET password_hash=? WHERE id=1',(password_hash(body.password),))
+    c.execute('DELETE FROM sessions')
+    c.execute('DELETE FROM email_challenges')
+    return {'ok': True}
+
+
+@app.post('/api/auth/change-email/request')
+def change_email_request(body: EmailRequest, request: Request, owner=Depends(require_owner), c=Depends(database)):
+    current = c.execute('SELECT email FROM owners WHERE id=1').fetchone()[0]
+    if hmac.compare_digest(current.lower(),body.email):
+        raise HTTPException(422, 'Choose a different email address.')
+    issue_code(c, request, 'change_email_old', current, body.email)
+    issue_code(c, request, 'change_email_new', body.email, current)
+    return {'ok': True}
+
+
+@app.post('/api/auth/change-email/confirm')
+def change_email_confirm(body: EmailChange, owner=Depends(require_owner), c=Depends(database)):
+    current = c.execute('SELECT email FROM owners WHERE id=1').fetchone()[0]
+    old_target = c.execute('SELECT payload FROM email_challenges WHERE purpose=? AND destination=?', ('change_email_old',current)).fetchone()
+    if not old_target or old_target['payload'] != body.email:
+        raise HTTPException(400, 'Email change request expired. Request new codes.')
+    consume_code(c,'change_email_old',current,body.current_code)
+    previous = consume_code(c,'change_email_new',body.email,body.new_code)
+    if previous != current:
+        raise HTTPException(400, 'Email change request expired. Request new codes.')
+    c.execute('UPDATE owners SET email=? WHERE id=1',(body.email,))
+    c.execute('DELETE FROM sessions')
+    c.execute('DELETE FROM email_challenges')
+    return {'ok': True}
 
 
 @app.post("/api/auth/login")
@@ -172,7 +290,15 @@ def state(owner=Depends(require_owner), c=Depends(database)):
             "units": rows(c, "SELECT * FROM units ORDER BY property_id,label"),
             "tenants": rows(c, "SELECT * FROM tenants ORDER BY name"), "leases": leases, "records": records,
             "documents": rows(c, "SELECT id,filename,mime,size,kind,notes,property_id,unit_id,tenant_id,lease_id,record_id,created_at FROM documents WHERE deleted=0 ORDER BY id DESC"),
-            "deposits": rows(c, "SELECT * FROM deposit_transactions ORDER BY date DESC,id DESC")}
+            "deposits": rows(c, "SELECT * FROM deposit_transactions ORDER BY date DESC,id DESC"),
+            "dismissed_notifications": [row[0] for row in c.execute("SELECT notification_id FROM notification_dismissals WHERE owner_id=?", (owner["owner_id"],))]}
+
+
+@app.post("/api/notifications/dismiss")
+def dismiss_notifications(body: NotificationDismissIn, owner=Depends(require_owner), c=Depends(database)):
+    c.executemany("INSERT OR IGNORE INTO notification_dismissals(owner_id,notification_id) VALUES (?,?)",
+                  ((owner["owner_id"], notification_id) for notification_id in body.ids))
+    return {"dismissed": body.ids}
 
 
 @app.put("/api/settings")
@@ -200,6 +326,8 @@ def property_save(body: PropertyIn, id: int | None = None, owner=Depends(require
 @app.put("/api/units/{id}")
 def unit_save(body: UnitIn, id: int | None = None, owner=Depends(require_owner), c=Depends(database)):
     exists(c, "properties", body.property_id, active=True)
+    if body.tenant_id is not None:
+        exists(c, "tenants", body.tenant_id, active=True)
     if id:
         current = exists(c, "units", id)
         if current["property_id"] != body.property_id:

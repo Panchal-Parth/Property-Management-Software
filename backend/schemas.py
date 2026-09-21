@@ -1,4 +1,5 @@
 from datetime import date
+import re
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -12,14 +13,71 @@ class Login(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class NotificationDismissIn(Model):
+    ids: list[str] = Field(min_length=1, max_length=500)
+
+    @field_validator('ids')
+    @classmethod
+    def valid_ids(cls, values):
+        if any(not re.fullmatch(r'(?:unit-\d+-after-\d+|lease-\d+-\d{4}-\d{2}-\d{2})', value) for value in values):
+            raise ValueError('Invalid notification identifier')
+        return list(dict.fromkeys(values))
+
+
+class EmailRequest(Model):
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            raise ValueError('Enter a valid email address')
+        return value.lower()
+
+
+class SignupRequest(EmailRequest):
+    name: str = Field(min_length=1, max_length=150)
+    password: str = Field(min_length=12, max_length=256)
+
+
+class CodeConfirm(EmailRequest):
+    code: str = Field(pattern=r'^\d{6}$')
+
+
+class PasswordReset(CodeConfirm):
+    password: str = Field(min_length=12, max_length=256)
+
+
+class PasswordChange(Model):
+    password: str = Field(min_length=12, max_length=256)
+    code: str = Field(pattern=r'^\d{6}$')
+
+
+class EmailChange(Model):
+    email: str = Field(min_length=3, max_length=254)
+    current_code: str = Field(pattern=r'^\d{6}$')
+    new_code: str = Field(pattern=r'^\d{6}$')
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            raise ValueError('Enter a valid email address')
+        return value.lower()
+
+
 class PropertyIn(Model):
     name: str = Field(min_length=1, max_length=150)
     address: str = Field(min_length=1, max_length=500)
-    kind: Literal["Apartment", "Commercial"]
+    kind: Literal["Apartment", "Commercial", "Mixed"]
     notes: str = Field(default="", max_length=4000)
 
 
 class UnitIn(Model):
+    tenant_id: int | None = Field(default=None, gt=0)
+    expected_rent_cents: int | None = Field(default=None, ge=0, le=100_000_000_00, strict=True)
+    kind: Literal["Residential", "Commercial"] = "Residential"
+    notes: str = Field(default="", max_length=4000)
     property_id: int = Field(gt=0)
     label: str = Field(min_length=1, max_length=100)
     floor: str = Field(default="", max_length=60)
@@ -32,6 +90,13 @@ class TenantIn(Model):
     email: str = Field(default="", max_length=254)
     emergency_contact: str = Field(default="", max_length=500)
     notes: str = Field(default="", max_length=4000)
+
+    @field_validator('email')
+    @classmethod
+    def valid_email(cls, value):
+        if value and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            raise ValueError('Enter a valid email address or leave it blank')
+        return value
 
 
 class LeaseIn(Model):
@@ -54,11 +119,18 @@ class LeaseIn(Model):
 
 
 class MonthlyIn(Model):
+    expected_rent_cents: int | None = Field(default=None, ge=0, le=100_000_000_00, strict=True)
     property_id: int = Field(gt=0)
     unit_id: int | None = Field(default=None, gt=0)
     month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     amounts: list[int] = Field(min_length=6, max_length=6)
     notes: str = Field(default="", max_length=4000)
+
+    @field_validator('month')
+    @classmethod
+    def valid_month(cls, value):
+        date.fromisoformat(value + '-01')
+        return value
 
     @field_validator("amounts", mode="before")
     @classmethod

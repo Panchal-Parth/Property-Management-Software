@@ -33,6 +33,7 @@
 .property-actions summary { cursor: pointer; list-style: none; display: flex; padding: 4px; color: #637472; }
 .property-actions summary::-webkit-details-marker { display: none; }
 .property-action-menu { position: absolute; right: 0; top: 100%; width: 165px; padding: 6px; z-index: 5; background: white; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px #20383d26; }
+.property-actions.open-above .property-action-menu { top: auto; bottom: 100%; margin-bottom: 6px; }
 .property-action-menu button { display: block; width: 100%; padding: 10px; text-align: left; border: 0; border-radius: 5px; background: white; color: var(--ink); font-size: 13px; }
 .property-action-menu button:hover { background: var(--soft); }
 .property-action-menu button:last-child { color: #a13d3d; }

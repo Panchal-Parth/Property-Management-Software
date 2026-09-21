@@ -3,6 +3,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import date
@@ -61,6 +62,68 @@ class IntegrationTests(unittest.TestCase):
         for _ in range(10):
             self.assertEqual(self.client.post("/api/auth/login", json={"email": "owner@example.test", "password": "bad"}).status_code, 401)
         self.assertEqual(self.client.post("/api/auth/login", json={"email": "owner@example.test", "password": "bad"}).status_code, 429)
+
+    def test_notification_dismissal_survives_logout_and_is_protected(self):
+        notification_id = 'unit-12-after-0'
+        self.assertEqual(self.client.post('/api/notifications/dismiss', json={'ids': [notification_id]}).status_code, 200)
+        self.assertIn(notification_id, self.client.get('/api/state').json()['dismissed_notifications'])
+        self.assertEqual(self.client.post('/api/notifications/dismiss', json={'ids': ['invalid']}).status_code, 422)
+        self.assertEqual(self.client.post('/api/auth/logout').status_code, 200)
+        self.assertEqual(self.client.get('/api/state').status_code, 401)
+        self.assertEqual(self.client.post('/api/notifications/dismiss', json={'ids': [notification_id]}).status_code, 401)
+        self.login()
+        self.assertIn(notification_id, self.client.get('/api/state').json()['dismissed_notifications'])
+
+    def test_email_signup_single_owner_and_otp_limits(self):
+        with self.db.connect() as c:
+            c.execute('DELETE FROM sessions')
+            c.execute('DELETE FROM owners')
+        sent = []
+        with patch.object(self.main.email_delivery, 'send_code', side_effect=lambda to, code, purpose: sent.append((to, code, purpose))):
+            payload = {'name': 'New Owner', 'email': 'new@example.test', 'password': 'a-very-long-new-password'}
+            self.assertEqual(self.client.post('/api/auth/signup/request', json=payload).status_code, 200)
+            self.assertEqual(sent[-1][2], 'signup')
+            code = sent[-1][1]
+            self.assertEqual(self.client.post('/api/auth/signup/confirm', json={'email': payload['email'], 'code': '000000' if code != '000000' else '111111'}).status_code, 400)
+            self.assertEqual(self.client.post('/api/auth/signup/confirm', json={'email': payload['email'], 'code': code}).status_code, 200)
+            self.assertEqual(self.client.post('/api/auth/signup/request', json=payload).status_code, 409)
+            self.assertEqual(self.client.post('/api/auth/login', json={'email':payload['email'],'password':payload['password']}).status_code, 200)
+        with self.db.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM owners').fetchone()[0],1)
+            self.assertEqual(c.execute('SELECT count(*) FROM email_challenges').fetchone()[0],0)
+
+    def test_email_recovery_and_change_require_codes(self):
+        sent = []
+        with patch.object(self.main.email_delivery, 'send_code', side_effect=lambda to, code, purpose: sent.append((to, code, purpose))):
+            self.assertEqual(self.client.post('/api/auth/reset/request', json={'email':'other@example.test'}).status_code, 200)
+            self.assertFalse(sent)
+            self.assertEqual(self.client.post('/api/auth/reset/request', json={'email':'owner@example.test'}).status_code, 200)
+            code = sent[-1][1]
+            self.assertEqual(self.client.post('/api/auth/reset/confirm', json={'email':'owner@example.test','code':code,'password':'another-long-password'}).status_code, 200)
+            self.assertEqual(self.client.get('/api/state').status_code, 401)
+            fresh = self.client.post('/api/auth/login', json={'email':'owner@example.test','password':'another-long-password'})
+            self.assertEqual(fresh.status_code,200)
+            self.client.headers['x-csrf-token'] = fresh.json()['csrf']
+            self.assertEqual(self.client.post('/api/auth/change-email/request', json={'email':'new@example.test'}).status_code,200)
+            codes = {purpose: value for _, value, purpose in sent}
+            self.assertEqual(self.client.post('/api/auth/change-email/confirm', json={'email':'new@example.test','current_code':codes['change_email_old'],'new_code':'000000' if codes['change_email_new'] != '000000' else '111111'}).status_code,400)
+            self.assertEqual(self.client.post('/api/auth/change-email/confirm', json={'email':'new@example.test','current_code':codes['change_email_old'],'new_code':codes['change_email_new']}).status_code,200)
+            self.assertEqual(self.client.get('/api/state').status_code,401)
+            self.assertEqual(self.client.post('/api/auth/login',json={'email':'owner@example.test','password':'another-long-password'}).status_code,401)
+            self.assertEqual(self.client.post('/api/auth/login',json={'email':'new@example.test','password':'another-long-password'}).status_code,200)
+
+    def test_email_code_lockout_and_expiry(self):
+        sent = []
+        with patch.object(self.main.email_delivery, 'send_code', side_effect=lambda to, code, purpose: sent.append(code)):
+            self.assertEqual(self.client.post('/api/auth/reset/request',json={'email':'owner@example.test'}).status_code,200)
+            wrong = '000000' if sent[-1] != '000000' else '111111'
+            for _ in range(5):
+                self.assertEqual(self.client.post('/api/auth/reset/confirm',json={'email':'owner@example.test','code':wrong,'password':'another-long-password'}).status_code,400)
+            self.assertEqual(self.client.post('/api/auth/reset/confirm',json={'email':'owner@example.test','code':sent[-1],'password':'another-long-password'}).status_code,400)
+            with self.db.connect() as c:
+                c.execute("UPDATE email_challenges SET expires_at=0 WHERE purpose='reset'")
+            self.assertEqual(self.client.post('/api/auth/reset/confirm',json={'email':'owner@example.test','code':sent[-1],'password':'another-long-password'}).status_code,400)
+            self.assertEqual(self.client.post('/api/auth/login',json={'email':'owner@example.test','password':'long-test-password'}).status_code,200)
 
     def test_lease_overlap_vacancy_archive_and_deposit(self):
         p, u, t = self.setup_portfolio()
@@ -140,14 +203,56 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.manage.restore(folder, Path(self.tmp.name) / "bad-restore")
 
+    def test_mixed_use_units(self):
+        p = self.post("properties", {"name": "Mixed building", "address": "Test address", "kind": "Mixed"})["id"]
+        for kind in ("Residential", "Commercial"):
+            u = self.post("units", {"property_id": p, "label": kind, "kind": kind, "notes": "Import note"})["id"]
+            state = self.client.get("/api/state").json()
+            unit = next(row for row in state["units"] if row["id"] == u)
+            self.assertEqual(unit["kind"], kind)
+            self.assertEqual(unit["notes"], "Import note")
+
+    def test_rent_notes_and_unit_contact(self):
+        p, u, t = self.setup_portfolio()
+        response = self.client.put(f"/api/units/{u}", json={"property_id": p, "label": "101", "tenant_id": t, "expected_rent_cents": 200000})
+        self.assertEqual(response.status_code, 200, response.text)
+        body = {"property_id": p, "unit_id": u, "month": "2026-08", "amounts": [100000, 0, 0, 0, 0, 0], "expected_rent_cents": 200000, "notes": "Half paid.\nBalance promised on the 20th."}
+        rid = self.post("records", body)["id"]
+        state = self.client.get("/api/state").json()
+        record = next(r for r in state["records"] if r["id"] == rid)
+        self.assertEqual(record["notes"], body["notes"])
+        self.assertEqual(record["expected_rent_cents"], 200000)
+        self.assertEqual(record["amounts"][0], 100000)
+        self.assertEqual(state["units"][0]["tenant_id"], t)
+        self.assertEqual(state["leases"], [])
+        self.post("records", {**body, "month": "2026-09", "expected_rent_cents": -1}, code=422)
+
     def test_migrations_and_origin(self):
         self.db.migrate()
         self.db.migrate()
         with self.db.connect() as c:
-            self.assertEqual(c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0], 1)
+            self.assertEqual(c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0], 6)
             self.assertEqual(c.execute("PRAGMA foreign_keys").fetchone()[0], 1)
         r = self.client.post("/api/properties", headers={"Origin": "https://attacker.invalid"}, json={"name": "x", "address": "y", "kind": "Apartment"})
         self.assertEqual(r.status_code, 403)
+
+    def test_invalid_form_values(self):
+        self.post('tenants', {'name': '   '}, 422)
+        self.post('tenants', {'name': 'Test', 'email': 'not-an-email'}, 422)
+        p, u, t = self.setup_portfolio()
+        self.post('records', {'property_id': p, 'month': '0000-01', 'amounts': [0]*6}, 422)
+        self.post('leases', {'unit_id': u, 'tenant_ids': [t], 'start_date': '2026-10-01', 'end_date': '2026-09-01', 'rent_cents': 100}, 422)
+        self.post('deposits', {'lease_id': 1, 'kind': 'received', 'amount_cents': 0, 'date': '2026-09-01'}, 422)
+
+    def test_demo_seed_is_fictional_and_requires_empty_portfolio(self):
+        from demo_server import seed_demo
+        with self.db.connect() as c:
+            seed_demo(c)
+            self.assertEqual(c.execute('SELECT count(*) FROM leases').fetchone()[0], 3)
+            self.assertEqual(c.execute('SELECT count(*) FROM monthly_records').fetchone()[0], 3)
+            self.assertFalse(c.execute('PRAGMA foreign_key_check').fetchall())
+            with self.assertRaises(ValueError):
+                seed_demo(c)
 
     def test_concurrent_reads_and_writes(self):
         self.setup_portfolio()
