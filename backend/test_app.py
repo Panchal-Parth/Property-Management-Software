@@ -74,6 +74,21 @@ class IntegrationTests(unittest.TestCase):
         self.login()
         self.assertIn(notification_id, self.client.get('/api/state').json()['dismissed_notifications'])
 
+    def test_offsite_backup_requires_remote_repository_and_cleans_snapshot(self):
+        import offsite_backup
+        password = Path(self.tmp.name) / 'restic-password'
+        password.write_text('fictional-test-password')
+        with patch.dict(os.environ, {'RESTIC_REPOSITORY': str(Path(self.tmp.name) / 'local'), 'RESTIC_PASSWORD_FILE': str(password)}):
+            with self.assertRaisesRegex(RuntimeError, 'off-site'):
+                offsite_backup.run_backup()
+        calls = []
+        with patch.dict(os.environ, {'RESTIC_REPOSITORY': 's3:https://example.invalid/bucket', 'RESTIC_PASSWORD_FILE': str(password)}), \
+             patch.object(offsite_backup.shutil, 'which', return_value='/usr/bin/restic'), \
+             patch.object(offsite_backup.subprocess, 'run', side_effect=lambda args, **kwargs: calls.append(args)):
+            offsite_backup.run_backup()
+        self.assertEqual([args[1] for args in calls], ['backup', 'check', 'forget'])
+        self.assertFalse(Path(calls[0][-1]).exists())
+
     def test_email_signup_single_owner_and_otp_limits(self):
         with self.db.connect() as c:
             c.execute('DELETE FROM sessions')

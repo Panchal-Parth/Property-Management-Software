@@ -152,10 +152,22 @@ select:not([multiple]):focus-visible { outline: 0; border-color: #416f73; box-sh
   .deposit-history-row strong { text-align: left; }
 }
 .property-actions summary { min-width: 32px; min-height: 32px; }
-.sidebar { min-height: 100vh; }
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sidebar nav { flex: 1; min-height: 0; overflow-y: auto; }
+.sidebar-bottom { flex-shrink: 0; margin-top: 0; padding-top: 8px; background: #20383d; }
 .main-content h2 { font-size: 21px; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 @media(max-width: 700px) {
+  .mobile-open .sidebar { height: auto; min-height: 0; }
   .live-row { flex-wrap: wrap; }
   .tenant-live { grid-template-columns: minmax(0,1fr) 32px; }
   .tenant-live > div:nth-child(2) { grid-column: 1; grid-row: 2; }

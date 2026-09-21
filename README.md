@@ -180,7 +180,8 @@ retention period and monitor storage use; no destructive automatic purge is inst
 
 Use one Linux service instance on a persistent disk, not an ephemeral/serverless
 filesystem. Deploy examples are in deploy/. Hosting is not provisioned or activated
-by this repository; choose a server/domain and configure DNS before launch.
+by this repository. Follow the [production runbook](deploy/PRODUCTION.md) and
+[staging verification gate](deploy/STAGING.md) before entering private tenant data.
 
 1. Copy the app into /opt/havenly, install Python 3.13 + Node 22, create a dedicated
    unprivileged havenly service user, and grant it the data/backup folders only.
@@ -191,14 +192,15 @@ by this repository; choose a server/domain and configure DNS before launch.
    HAVENLY_ENV=production
    HAVENLY_ORIGIN=https://your-real-domain
    HAVENLY_DATA_DIR=/var/lib/havenly
-5. Create /var/lib/havenly and /var/backups/havenly owned by the service user,
-   mode 700. Add `BREVO_API_KEY` and `HAVENLY_MAIL_FROM` to the private service
+5. Create /var/lib/havenly owned by the service user, mode 700. Add
+   `BREVO_API_KEY` and `HAVENLY_MAIL_FROM` to the private service
    environment, then sign up on the website or provision the owner locally using
    the same HAVENLY_DATA_DIR.
 6. Adapt deploy/havenly.service and deploy/Caddyfile. Configure Caddy with your
    real domain and HTTPS, and expose only ports 80/443. The API binds loopback.
-7. Install and enable the service and backup timer examples. Check their logs and
-   monitor /api/health. Copy backups off-server; a local disk backup alone is
+7. Configure a private Backblaze B2 repository and restic password file. Initialize
+   it, then install and enable the service and encrypted off-site backup timer.
+   Check both services' logs and monitor /api/health. A local disk backup alone is
    insufficient for disk failure.
 8. Test sign-in, create/edit records, refresh, restart service, download documents,
    sign-out, unauthenticated access rejection, and restore a backup in a separate

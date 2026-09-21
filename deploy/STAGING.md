@@ -44,15 +44,19 @@ edits that would invalidate document associations.
 5. Restart havenly.service. Reload and verify the same records and PDF download.
    Test parallel browsing from two tabs, then sign out and confirm private requests
    return 401. Test wrong-password rejection.
-6. Start havenly-backup.service once. Inspect its exit status/log and the created
-   backup. Confirm havenly-backup.timer is enabled with a next scheduled run using
-   `systemctl list-timers havenly-backup.timer`. Configure alerts on failure.
-7. Restore that backup into a NEW data directory using manage.py restore. Start
+6. Initialize the private restic repository, then start havenly-backup.service
+   once. Inspect its exit status/log and confirm a new encrypted snapshot exists
+   in B2 with `restic snapshots`. Confirm havenly-backup.timer is enabled with a
+   next scheduled run using `systemctl list-timers havenly-backup.timer`.
+   Configure alerts on service failure and a missing successful daily backup.
+7. Download that B2 snapshot to a separate private directory and restore its
+   `snapshot` folder into a NEW data directory using manage.py restore. Start
    a separate loopback instance against the restored directory. Sign in again
    (backup sessions are revoked). Confirm balances, relationships and PDF bytes.
    Do not switch the live data directory merely to perform a drill.
-8. Configure encrypted off-host backup copies, retention, disk-space monitoring,
-   and uptime checks. Verify recovery from an off-host copy as well.
+8. Confirm the off-host retention policy, disk-space monitoring, uptime checks,
+   restricted SSH/cloud firewall, and OS update policy. Verify that the restore
+   drill did not touch the live data directory.
 
 Do not approve public launch until every host-specific step passes. The repository
 contains configuration templates, not proof these services have been installed.

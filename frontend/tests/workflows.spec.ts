@@ -1,5 +1,21 @@
 import { test, expect } from '@playwright/test'
 
+test('guide and sign out stay visible in the sidebar while a long page scrolls', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+  await page.getByLabel('Email', { exact: true }).fill('browser-test@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('test-only-password-123')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Welcome, Browser' })).toBeVisible()
+  const guide = page.getByRole('button', { name: 'View guide' })
+  const signOut = page.getByRole('button', { name: 'Sign out', exact: true })
+  for (const scrollY of [0, 700]) {
+    await page.evaluate(y => window.scrollTo(0, y), scrollY)
+    await expect.poll(async () => (await guide.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(0)
+    await expect.poll(async () => ((await signOut.boundingBox())?.y ?? 10000) + ((await signOut.boundingBox())?.height ?? 0)).toBeLessThanOrEqual(720)
+  }
+})
+
 test('owner manages persistent portfolio, finances, files and settings', async ({ page }) => {
   const jsErrors: string[] = []
   page.on('pageerror', e => jsErrors.push(e.message))
@@ -132,12 +148,14 @@ test('owner manages persistent portfolio, finances, files and settings', async (
   await save()
   await page.reload()
   await expect(page.locator('.workspace')).toContainText('Updated Owner')
-  for (const width of [1280, 768, 390, 320]) {
+  for (const width of [1440, 1024, 834, 768, 700, 600, 430, 390, 320]) {
     await page.setViewportSize({ width, height: 844 })
-    for (const section of ['Dashboard', 'Properties', 'Tenants', 'Leases', 'Transactions', 'Documents', 'Reports', 'Settings']) {
+    for (const section of ['Dashboard', 'Properties', 'Tenants', 'Leases', 'Transactions', 'Documents', 'Reports', 'Settings', 'Guide']) {
       if (width <= 700) await page.getByLabel('Toggle navigation').click()
-      await nav(section)
+      if (section === 'Guide') await page.getByRole('button', { name: 'View guide' }).click()
+      else await nav(section)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${section} fits at ${width}px`).toBe(true)
+      await expect(page.getByRole('heading', { level: 1 })).toBeInViewport()
     }
   }
   await page.setViewportSize({ width: 390, height: 844 })
