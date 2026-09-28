@@ -108,6 +108,25 @@ test('owner manages persistent portfolio, finances, files and settings', async (
   await page.getByLabel('Report period', { exact: true }).selectOption('year')
   await page.getByLabel('Report year', { exact: true }).selectOption('2025')
   await expect(page.locator('.report-comparison')).toContainText('2025 full year')
+  const printActions = page.locator('.report-print-actions')
+  const printButton = page.getByRole('button', { name: 'Print / save as PDF', exact: true })
+  await expect(printButton).toBeVisible()
+  const desktopPrintLayout = await printActions.evaluate(element => {
+    const row = element.getBoundingClientRect()
+    const button = element.querySelector('button')!.getBoundingClientRect()
+    return { rowTop: row.top, buttonRight: button.right, rowRight: row.right }
+  })
+  expect(desktopPrintLayout.buttonRight).toBeCloseTo(desktopPrintLayout.rowRight, 0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const mobilePrintLayout = await printActions.evaluate(element => {
+    const row = element.getBoundingClientRect()
+    const button = element.querySelector('button')!.getBoundingClientRect()
+    return { rowTop: row.top, rowBottom: row.bottom, buttonTop: button.top, buttonBottom: button.bottom, buttonWidth: button.width, rowWidth: row.width }
+  })
+  expect(mobilePrintLayout.buttonTop).toBeGreaterThan(mobilePrintLayout.rowTop)
+  expect(mobilePrintLayout.buttonBottom).toBeLessThanOrEqual(mobilePrintLayout.rowBottom)
+  expect(mobilePrintLayout.buttonWidth).toBeCloseTo(mobilePrintLayout.rowWidth, 0)
+  await page.setViewportSize({ width: 1280, height: 720 })
   await expect(page.locator('.recharts-bar')).toBeVisible()
   await page.locator('.recharts-rectangle').first().hover()
   await expect(page.locator('.recharts-tooltip-wrapper')).toContainText('$1,400.50')
@@ -277,4 +296,49 @@ test('cleared notifications remain cleared after reload and signing back in', as
     await secondPage.getByRole('button', { name: 'Sign in', exact: true }).click()
     await expect(secondPage.getByRole('button', { name: 'Notifications, 0 unread' })).toBeVisible()
   } finally { await secondContext.close() }
+})
+
+test('creation actions show plus icons and lease dropdown carets stay centered', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Email', { exact: true }).fill('browser-test@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('test-only-password-123')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /^Welcome,/ })).toBeVisible()
+
+  const nav = (name: string) => page.locator('nav').getByRole('button', { name, exact: true }).click()
+  for (const [section, action] of [
+    ['Properties', 'Add property'],
+    ['Leases', 'Add lease'],
+    ['Transactions', 'Add monthly entry'],
+    ['Documents', 'Upload document'],
+  ]) {
+    await nav(section)
+    const button = page.getByRole('button', { name: action, exact: true })
+    await expect(button.locator('svg.lucide-plus')).toBeVisible()
+    expect(await button.evaluate(element => getComputedStyle(element).alignItems)).toBe('center')
+  }
+
+  await nav('Properties')
+  const testPropertyName = `Caret Test Property ${Date.now()}`
+  await page.getByRole('button', { name: 'Add property', exact: true }).click()
+  await page.getByLabel('Property name', { exact: true }).fill(testPropertyName)
+  await page.getByLabel('Full address').fill('789 Browser Lane')
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click()
+  const propertySection = page.locator('.property-section').filter({ hasText: testPropertyName })
+  await propertySection.getByRole('button', { name: 'Units & details' }).click()
+  await propertySection.getByRole('button', { name: 'Add unit / commercial space' }).click()
+  await page.getByLabel('Apartment number or space label').fill('1')
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click()
+  await nav('Tenants')
+  await page.getByRole('button', { name: 'Add tenant', exact: true }).click()
+  await page.getByLabel('Full name', { exact: true }).fill('Caret Test Tenant')
+  await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click()
+  await nav('Leases')
+  await page.getByRole('button', { name: 'Add lease', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  const leaseSelect = page.getByRole('dialog').getByLabel('Unit / space', { exact: true })
+  await expect(leaseSelect).toBeVisible()
+  const pickerAlignment = await leaseSelect.evaluate(element => getComputedStyle(element, '::picker-icon').alignSelf)
+  expect(pickerAlignment).toBe('center')
+  await page.getByRole('button', { name: 'Close form', exact: true }).click()
 })

@@ -73,8 +73,8 @@ select:not([multiple]):focus-visible { outline: 0; border-color: #416f73; box-sh
 :where(.editor, .auth-card, .settings-card) :is(input, select, textarea):user-invalid { border-color: #ae512d; box-shadow: 0 0 0 3px #ae512d1f; }
 @supports (appearance: base-select) {
   select:not([multiple]), select:not([multiple])::picker(select) { appearance: base-select; }
-  select:not([multiple]) { background-image: none; padding: 10px 12px !important; gap: 10px; }
-  select:not([multiple])::picker-icon { color: #416f73; margin-left: auto; flex-shrink: 0; transition: rotate .2s ease; }
+  select:not([multiple]) { display: flex; align-items: center; background-image: none; padding: 10px 12px !important; gap: 10px; }
+  select:not([multiple])::picker-icon { align-self: center; color: #416f73; margin: auto 0 auto auto; flex-shrink: 0; transition: rotate .2s ease; }
   select:not([multiple]):open::picker-icon { rotate: 180deg; }
   select:not([multiple])::picker(select) {
     inline-size: anchor-size(width);
@@ -144,6 +144,7 @@ select:not([multiple]):focus-visible { outline: 0; border-color: #416f73; box-sh
 .chart-hint { margin: 12px 0 6px; color: #4f666b; font-size: 14px; }
 .live-row > strong, .live-row > span { overflow-wrap: anywhere; }
 .scroll-table td { vertical-align: top; }
+.report-print-actions { display: flex; justify-content: flex-end; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 @media(max-width: 700px) {
   .lease-row { grid-template-columns: minmax(0, 1fr) 32px; }
   .lease-finances { grid-column: 1 / -1; grid-row: 2; }
@@ -174,6 +175,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   .tenant-live > .property-actions { grid-column: 2; grid-row: 1; }
   .live-toolbar .list-search { margin-right: 0; }
   .control, .control input, .control select { width: 100%; max-width: none; }
+  .report-print-actions { margin-top: 18px; }
+  .report-print-actions .secondary-btn { width: 100%; justify-content: center; }
   .editor { padding: 20px; }
   .chart-month-labels { padding-left: 64px; font-size: 10px; letter-spacing: -.04em; }
 }
