@@ -102,6 +102,12 @@ working. Alternatively run `manage.py create-owner` on the server as `havenly`
 with `HAVENLY_DATA_DIR` set to the live directory. Never seed the production
 database with the synthetic/demo data used in tests.
 
+If administrator access is required, run `manage.py create-admin` as the same
+service user with the same `HAVENLY_DATA_DIR`. Use a unique password stored in a
+password manager. No administrator account or default password is created by
+deployment, and administrator credentials must never be placed in environment
+files, source control, or service unit files.
+
 ## Launch gate and recovery
 
 Run every check in [STAGING.md](STAGING.md) with **synthetic data first**, on

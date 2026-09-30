@@ -50,6 +50,15 @@ The first verified signup creates the single owner. If email is not configured,
 prompts privately for a password of at least 12 characters. There is no default
 password. Do not paste your password into source code or chat.
 
+To provision the separate administrator after creating the owner, run
+`python manage.py create-admin` on the server. It prompts privately for unique
+administrator credentials and never creates a default password. Administrators
+can use the full workspace and get an additional Admin page for changing the
+owner email or password directly. Admin sessions expire after 30 minutes, every
+credential change requires the administrator password again, and owner sessions
+are revoked after a change. Use `python manage.py reset-admin-password` locally
+if the administrator password is lost.
+
 ## Email verification and recovery
 
 Create a Brevo account, verify your sender email/domain, and create an API key

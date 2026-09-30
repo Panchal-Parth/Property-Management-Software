@@ -53,6 +53,25 @@ class PasswordChange(Model):
     code: str = Field(pattern=r'^\d{6}$')
 
 
+class AdminAccountUpdate(Model):
+    email: str | None = Field(default=None, min_length=3, max_length=254)
+    password: str | None = Field(default=None, min_length=12, max_length=256)
+    admin_password: str = Field(min_length=1, max_length=256)
+
+    @field_validator('email')
+    @classmethod
+    def valid_admin_target_email(cls, value):
+        if value is not None and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            raise ValueError('Enter a valid email address')
+        return value.lower() if value is not None else None
+
+    @model_validator(mode='after')
+    def has_change(self):
+        if self.email is None and self.password is None:
+            raise ValueError('Enter a new email address or password')
+        return self
+
+
 class EmailChange(Model):
     email: str = Field(min_length=3, max_length=254)
     current_code: str = Field(pattern=r'^\d{6}$')

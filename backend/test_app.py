@@ -63,6 +63,33 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(self.client.post("/api/auth/login", json={"email": "owner@example.test", "password": "bad"}).status_code, 401)
         self.assertEqual(self.client.post("/api/auth/login", json={"email": "owner@example.test", "password": "bad"}).status_code, 429)
 
+    def test_admin_has_data_access_and_exclusive_credential_controls(self):
+        from security import password_hash
+        with self.db.connect() as c:
+            c.execute("INSERT INTO admins(id,email,password_hash) VALUES(1,?,?)", ("admin@example.test", password_hash("long-admin-password")))
+        self.assertEqual(self.client.get("/api/admin/account").status_code, 403)
+        owner_cookie = self.client.cookies.get("havenly_session")
+        with TestClient(self.main.app) as admin:
+            login = admin.post("/api/auth/admin/login", json={"email": "admin@example.test", "password": "long-admin-password"})
+            self.assertEqual(login.status_code, 200, login.text)
+            self.assertEqual(login.json()["role"], "admin")
+            self.assertEqual(admin.get("/api/auth/session").json()["role"], "admin")
+            self.assertEqual(admin.get("/api/state").status_code, 200)
+            self.assertEqual(admin.put("/api/admin/account", json={"email": "changed@example.test", "admin_password": "long-admin-password"}).status_code, 403)
+            admin.headers["x-csrf-token"] = login.json()["csrf"]
+            self.assertEqual(admin.put("/api/admin/account", json={"email": "changed@example.test", "admin_password": "wrong"}).status_code, 403)
+            changed = admin.put("/api/admin/account", json={"email": "changed@example.test", "password": "new-owner-password", "admin_password": "long-admin-password"})
+            self.assertEqual(changed.status_code, 200, changed.text)
+            self.assertEqual(admin.get("/api/state").status_code, 200)
+            self.assertEqual(admin.get("/api/admin/account").json()["owner_email"], "changed@example.test")
+        with TestClient(self.main.app) as stale_owner:
+            stale_owner.cookies.set("havenly_session", owner_cookie)
+            self.assertEqual(stale_owner.get("/api/state").status_code, 401)
+            self.assertEqual(stale_owner.post("/api/auth/login", json={"email": "owner@example.test", "password": "long-test-password"}).status_code, 401)
+            self.assertEqual(stale_owner.post("/api/auth/login", json={"email": "changed@example.test", "password": "new-owner-password"}).status_code, 200)
+        with self.db.connect() as c:
+            self.assertEqual(c.execute("SELECT action FROM admin_audit").fetchone()[0], "owner_email_and_password_changed")
+
     def test_notification_dismissal_survives_logout_and_is_protected(self):
         notification_id = 'unit-12-after-0'
         self.assertEqual(self.client.post('/api/notifications/dismiss', json={'ids': [notification_id]}).status_code, 200)
@@ -246,7 +273,7 @@ class IntegrationTests(unittest.TestCase):
         self.db.migrate()
         self.db.migrate()
         with self.db.connect() as c:
-            self.assertEqual(c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0], 6)
+            self.assertEqual(c.execute("SELECT count(*) FROM schema_migrations").fetchone()[0], 7)
             self.assertEqual(c.execute("PRAGMA foreign_keys").fetchone()[0], 1)
         r = self.client.post("/api/properties", headers={"Origin": "https://attacker.invalid"}, json={"name": "x", "address": "y", "kind": "Apartment"})
         self.assertEqual(r.status_code, 403)

@@ -16,6 +16,27 @@ test('guide and sign out stay visible in the sidebar while a long page scrolls',
   }
 })
 
+test('view guide starts an interactive tour through the core product areas', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Email', { exact: true }).fill('browser-test@example.test')
+  await page.getByLabel('Password', { exact: true }).fill('test-only-password-123')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'View guide' }).click()
+  const tour = page.getByRole('dialog')
+  await expect(tour).toContainText('Your portfolio at a glance')
+  await expect(tour).toContainText('STEP 1 OF 9')
+  await tour.getByRole('button', { name: 'Next' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Properties' })).toBeVisible()
+  await expect(page.locator('[data-tour="page-primary"]')).toHaveText(/Add property/)
+  await expect(tour).toContainText('Add properties and rentable spaces')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('heading', { level: 1, name: 'Tenants' })).toBeVisible()
+  await tour.getByRole('button', { name: 'Back' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Properties' })).toBeVisible()
+  await tour.getByRole('button', { name: 'Skip tour' }).click()
+  await expect(tour).not.toBeVisible()
+})
+
 test('owner manages persistent portfolio, finances, files and settings', async ({ page }) => {
   const jsErrors: string[] = []
   page.on('pageerror', e => jsErrors.push(e.message))
@@ -180,8 +201,11 @@ test('owner manages persistent portfolio, finances, files and settings', async (
     await page.setViewportSize({ width, height: 844 })
     for (const section of ['Dashboard', 'Properties', 'Tenants', 'Leases', 'Transactions', 'Documents', 'Reports', 'Settings', 'Guide']) {
       if (width <= 700) await page.getByLabel('Toggle navigation').click()
-      if (section === 'Guide') await page.getByRole('button', { name: 'View guide' }).click()
-      else await nav(section)
+      if (section === 'Guide') {
+        await page.getByRole('button', { name: 'View guide' }).click()
+        await expect(page.getByRole('dialog')).toBeVisible()
+        await page.getByRole('button', { name: 'Close tutorial' }).click()
+      } else await nav(section)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${section} fits at ${width}px`).toBe(true)
       await expect(page.getByRole('heading', { level: 1 })).toBeInViewport()
     }

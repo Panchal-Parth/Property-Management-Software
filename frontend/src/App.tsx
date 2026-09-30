@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { ArrowUpRight, BarChart3, Bell, Building2, CircleDollarSign, FileText, Home, LayoutDashboard, Menu, MoreHorizontal, Plus, Search, Settings, Users } from 'lucide-react'
+import { ArrowUpRight, BarChart3, Bell, Building2, CircleDollarSign, FileText, Home, LayoutDashboard, Menu, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Users } from 'lucide-react'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, setCsrf } from './api'
 import type { State, Property, Unit, Tenant, Lease, Monthly, Document } from './types'
 import Editor from './Editor'
 import DocumentPreview from './DocumentPreview'
 import AccountFlow from './AccountFlow'
+import ProductTour from './ProductTour'
+import type { TourStep } from './ProductTour'
+import AdminPanel from './AdminPanel'
 import type { AccountMode } from './AccountFlow'
 import type { Edit, Field } from './Editor'
 import './App.css'
 import './pages.css'
 import './typography.css'
 import './live.css'
+import './tour.css'
+
+const tourSteps: TourStep[] = [
+  { page: 'Dashboard', target: '[data-tour="page-heading"]', eyebrow: 'Welcome to Havenly', title: 'Your portfolio at a glance', description: 'The dashboard brings together occupancy, rent received, expenses, and profit. Search and period filters help you focus on exactly what you need.' },
+  { page: 'Properties', target: '[data-tour="page-primary"]', eyebrow: 'Build your portfolio', title: 'Add properties and rentable spaces', description: 'Start with each building or commercial property, then open Units & details to add every apartment or rentable space.' },
+  { page: 'Tenants', target: '[data-tour="page-primary"]', eyebrow: 'Know your renters', title: 'Keep tenant details together', description: 'Save contact and emergency information here. Tenant records can then be connected to one or more leases.' },
+  { page: 'Leases', target: '[data-tour="page-primary"]', eyebrow: 'Track occupancy', title: 'Connect tenants to units', description: 'A lease records the unit, tenants, dates, agreed rent, and deposit. Havenly uses active lease dates to calculate occupancy.' },
+  { page: 'Transactions', target: '[data-tour="page-primary"]', eyebrow: 'Stay on top of cash flow', title: 'Record rent and expenses', description: 'Add a monthly entry for rent actually received and property expenses. Payment notes and expected rent help you spot partial payments.' },
+  { page: 'Documents', target: '[data-tour="page-primary"]', eyebrow: 'Keep records close', title: 'Upload important documents', description: 'Store PDFs and images, then link them to a property, unit, tenant, lease, or receipt so they are easy to find later.' },
+  { page: 'Reports', target: '[data-tour="page-primary"]', eyebrow: 'Understand performance', title: 'Review and export reports', description: 'Compare profit across properties and periods, export the filtered data to CSV, or print a report to PDF.' },
+  { page: 'Settings', target: '[data-tour="settings"]', eyebrow: 'Make it yours', title: 'Set your preferences and security', description: 'Update your profile, timezone, and expense labels here. You can also securely change your email or password.' },
+  { page: 'Dashboard', target: '[data-tour="help"]', eyebrow: 'You are ready', title: 'Come back anytime', description: 'That is the core Havenly workflow. Select View guide whenever you want to take this tour again.' },
+]
 
 const totalExpense = (r: Monthly) => r.amounts.slice(1).reduce((a, b) => a + b, 0)
 const match = (query: string, ...values: unknown[]) => values.join(' ').toLowerCase().includes(query.trim().toLowerCase())
@@ -46,6 +62,7 @@ function PaymentNotes({ notes }: { notes: string }) {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
+  const [role, setRole] = useState<'owner' | 'admin' | null>(null)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<State | null>(null)
   const [error, setError] = useState('')
@@ -70,13 +87,14 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [noticeOpen, setNoticeOpen] = useState(false)
+  const [tourStep, setTourStep] = useState<number | null>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const reload = useCallback(async () => { const state = await api<State>('/state'); setData(state); setMonth(current => current || state.today.slice(0, 7)) }, [])
   useEffect(() => {
-    const expired = () => { setAuthenticated(false); setData(null); setEdit(null); setPreview(null) }
+    const expired = () => { setAuthenticated(false); setRole(null); setData(null); setEdit(null); setPreview(null) }
     window.addEventListener('havenly:unauthorized', expired)
     ;(async () => {
-      try { const s = await api<{ csrf: string }>('/auth/session'); setCsrf(s.csrf); setAuthenticated(true); await reload() }
+      try { const s = await api<{ csrf: string; role: 'owner' | 'admin' }>('/auth/session'); setCsrf(s.csrf); setRole(s.role); setAuthenticated(true); await reload() }
       catch (e) { if (e instanceof Error && e.message !== 'Sign in to continue.') setError(e.message) }
       finally { setLoading(false) }
     })()
@@ -84,6 +102,11 @@ export default function App() {
   }, [reload])
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(timer) }, [notice])
   function navigate(next: string) { setPage(next); setQuery(''); setScope(''); setKind(''); setSelectedProperty(null); setMobile(false); setNoticeOpen(false); setError('') }
+  function startTour() { navigate(tourSteps[0].page); setTourStep(0) }
+  function moveTour(next: number) {
+    if (next >= tourSteps.length) { setTourStep(null); navigate('Dashboard'); return }
+    navigate(tourSteps[next].page); setTourStep(next)
+  }
   async function save(path: string, method: string, body?: unknown) {
     await api(path, method, body)
     try { await reload() } catch { throw new Error('Saved, but refreshing the list failed. Refresh before submitting again.') }
@@ -94,7 +117,7 @@ export default function App() {
     try { await save(path, method) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
   if (loading) return <main className="auth-shell"><div className="card auth-card">Loading your workspace…</div></main>
-  if (!authenticated) return <Login onLogin={async () => { setAuthenticated(true); setLoading(true); setError(''); try { await reload() } catch (e) { setError((e as Error).message) } finally { setLoading(false) } }} />
+  if (!authenticated) return <Login onLogin={async nextRole => { setRole(nextRole); setAuthenticated(true); setLoading(true); setError(''); try { await reload() } catch (e) { setError((e as Error).message) } finally { setLoading(false) } }} />
   if (!data) return <main className="auth-shell"><div className="card auth-card"><p role="alert">{error || 'Unable to load workspace.'}</p><button className="primary-btn" onClick={() => reload().catch(e => setError(e.message))}>Retry</button></div></main>
 
   const state = data
@@ -230,8 +253,9 @@ export default function App() {
     <BarChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}><CartesianGrid vertical={false} stroke="#dbe5e1" /><XAxis dataKey="month" tick={false} tickLine={false} height={10} /><YAxis width={64} tickFormatter={v => String(v / 100)} tick={{ fontSize: 13, fill: '#4f666b' }} /><Tooltip content={({ active, payload }) => { const r = payload?.[0]?.payload; return active && r ? <div style={tooltip}><strong>{r.month}</strong><div>Rent: {currency(r.income)}</div><div>Expenses: {currency(r.expenses)}</div><div>Profit: {currency(r.profit)}</div></div> : null }} /><Bar isAnimationActive={false} dataKey="profit" fill="#416f73" maxBarSize={60} radius={[5, 5, 0, 0]} /></BarChart>
     : <AreaChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}><CartesianGrid vertical={false} stroke="#dbe5e1" /><XAxis dataKey="month" tick={false} tickLine={false} height={10} /><YAxis width={64} tickFormatter={v => String(v / 100)} tick={{ fontSize: 13, fill: '#4f666b' }} /><Tooltip labelFormatter={label => String(label)} formatter={(v, name) => [currency(Number(v)), name === 'income' ? 'Rent received' : 'Expenses']} contentStyle={tooltip} /><Area isAnimationActive={false} type="monotone" dataKey="income" stroke="#416f73" fill="#dcebe6" strokeWidth={3} activeDot={{ r: 6 }} /><Area isAnimationActive={false} type="monotone" dataKey="expenses" stroke="#ae512d" fill="transparent" strokeWidth={3} activeDot={{ r: 6 }} /></AreaChart>
   }</ResponsiveContainer><div className="chart-month-labels" style={{ gridTemplateColumns: `repeat(${chartData.length}, minmax(0, 1fr))` }} aria-label="Months shown">{chartData.map(row => <span key={row.month} title={row.month} aria-label={row.month}>{new Date(row.month + '-02T12:00:00').toLocaleString('en-US', { month: 'short' })}</span>)}</div></div></>}</div>
-  const initials = state.settings.name.split(/\s+/).slice(0, 2).map(n => n[0]).join('').toUpperCase()
-  const nav = [{ name: 'Dashboard', icon: LayoutDashboard }, { name: 'Properties', icon: Building2 }, { name: 'Tenants', icon: Users }, { name: 'Leases', icon: FileText }, { name: 'Transactions', icon: CircleDollarSign }, { name: 'Documents', icon: FileText }, { name: 'Reports', icon: BarChart3 }, { name: 'Settings', icon: Settings }]
+  const displayName = role === 'admin' ? 'Admin' : state.settings.name
+  const initials = displayName.split(/\s+/).slice(0, 2).map(n => n[0]).join('').toUpperCase()
+  const nav = [{ name: 'Dashboard', icon: LayoutDashboard }, { name: 'Properties', icon: Building2 }, { name: 'Tenants', icon: Users }, { name: 'Leases', icon: FileText }, { name: 'Transactions', icon: CircleDollarSign }, { name: 'Documents', icon: FileText }, { name: 'Reports', icon: BarChart3 }, { name: 'Settings', icon: Settings }, ...(role === 'admin' ? [{ name: 'Admin', icon: ShieldCheck }] : [])]
   const notifications = [
     ...availableUnits.filter(u => !u.unavailable && !activeLease(u.id)).map(u => { const priorLease = state.leases.filter(l => l.unit_id === u.id).sort((a, b) => b.id - a.id)[0]; return { id: 'unit-' + u.id + '-after-' + (priorLease?.id || 0), message: unitName(u.id) + ' is vacant', page: 'Properties' } }),
     ...state.leases.filter(l => !l.cancelled && l.start_date <= state.today && l.end_date >= state.today && (Date.parse(l.end_date) - Date.parse(state.today)) / 86400000 <= 60).map(l => ({ id: 'lease-' + l.id + '-' + l.end_date, message: unitName(l.unit_id) + ' lease ends ' + l.end_date, page: 'Leases' })),
@@ -251,25 +275,25 @@ export default function App() {
   }
 
   return <div className={mobile ? 'app-shell mobile-open' : 'app-shell'}>
-    <aside className="sidebar"><button type="button" className="brand brand-button" aria-label="Havenly home" onClick={() => navigate('Dashboard')}><Home /> Havenly</button><button className="workspace workspace-button" onClick={() => navigate('Settings')}><span className="avatar">{initials}</span><span><strong>{state.settings.name}</strong><small>Property owner</small></span><ArrowUpRight size={17} /></button><nav>{nav.map(({ name, icon: Icon }) => <button key={name} className={'nav-item ' + (page === name ? 'active' : '')} onClick={() => navigate(name)}><Icon size={18} />{name}</button>)}</nav><div className="sidebar-bottom"><div className="help-card"><strong>Need a hand?</strong><p>Learn your portfolio workflows.</p><button onClick={() => navigate('Guide')}>View guide <ArrowUpRight size={15} /></button></div><button className="nav-item" disabled={busy} onClick={async () => { setBusy(true); try { await api('/auth/logout', 'POST'); setAuthenticated(false); setData(null); setCsrf('') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }}>Sign out</button></div></aside>
+    <aside className="sidebar"><button type="button" className="brand brand-button" aria-label="Havenly home" onClick={() => navigate('Dashboard')}><Home /> Havenly</button><button className="workspace workspace-button" onClick={() => navigate('Settings')}><span className="avatar">{initials}</span><span><strong>{displayName}</strong><small>{role === 'admin' ? 'Administrator' : 'Property owner'}</small></span><ArrowUpRight size={17} /></button><nav>{nav.map(({ name, icon: Icon }) => <button key={name} className={'nav-item ' + (page === name ? 'active' : '')} onClick={() => navigate(name)}><Icon size={18} />{name}</button>)}</nav><div className="sidebar-bottom"><div className="help-card" data-tour="help"><strong>Need a hand?</strong><p>Learn your portfolio workflows.</p><button onClick={startTour}>View guide <ArrowUpRight size={15} /></button></div><button className="nav-item" disabled={busy} onClick={async () => { setBusy(true); try { await api('/auth/logout', 'POST'); setAuthenticated(false); setRole(null); setData(null); setCsrf('') } catch (e) { setError((e as Error).message) } finally { setBusy(false) } }}>Sign out</button></div></aside>
     <main className="main-content"><header className="topbar"><button className="mobile-menu" aria-label="Toggle navigation" onClick={() => setMobile(!mobile)}><Menu /></button><div className="breadcrumbs">Workspace / <strong>{page}</strong></div><div className="top-actions">
       <button className="icon-btn" aria-label={'Notifications, ' + unread + ' unread'} onClick={() => setNoticeOpen(!noticeOpen)}><Bell />{unread > 0 && <span className="notification-count">{unread}</span>}</button>
       <button className="top-avatar profile-button" aria-label="Profile settings" onClick={() => navigate('Settings')}>{initials}</button>
     </div></header>
     {noticeOpen && <section className="live-notifications card" aria-label="Notifications"><h2>Notifications</h2><div className="toolbar"><button className="secondary-btn" disabled={!visibleNotifications.length} onClick={() => void dismissNotifications(visibleNotifications.map(n => n.id))}>Clear all</button><button className="secondary-btn" onClick={() => setNoticeOpen(false)}>Close</button></div>{!visibleNotifications.length && <Empty>All caught up. Cleared notifications stay hidden in your account.</Empty>}{visibleNotifications.map(n => <button key={n.id} className="notification-item" onClick={() => { void dismissNotifications([n.id]); navigate(n.page) }}>{n.message} →</button>)}</section>}
-    <div className="page"><div className="page-heading"><div><p className="eyebrow">YOUR RENTAL WORKSPACE</p><h1>{page === 'Dashboard' ? 'Welcome, ' + state.settings.name.split(' ')[0] : page}</h1><p className="subheading">{page === 'Dashboard' ? 'Your saved portfolio at a glance.' : 'Manage your records securely in one place.'}</p></div>
-      {page === 'Properties' && <button className="primary-btn" onClick={() => propertyEditor()}><Plus size={18} />Add property</button>}
-      {page === 'Tenants' && <button className="primary-btn" onClick={() => tenantEditor()}><Plus size={18} />Add tenant</button>}
-      {page === 'Leases' && <button className="primary-btn" onClick={() => leaseEditor()}><Plus size={18} />Add lease</button>}
-      {page === 'Transactions' && <button className="primary-btn" onClick={() => monthlyEditor()}><Plus size={18} />Add monthly entry</button>}
-      {page === 'Documents' && <button className="primary-btn" disabled={busy} onClick={() => uploadRef.current?.click()}><Plus size={18} />{busy ? 'Uploading…' : 'Upload document'}</button>}
-      {page === 'Reports' && <button className="secondary-btn" onClick={exportReport}>Export CSV</button>}
+    <div className="page"><div className="page-heading" data-tour="page-heading"><div><p className="eyebrow">YOUR RENTAL WORKSPACE</p><h1>{page === 'Dashboard' ? 'Welcome, ' + displayName.split(' ')[0] : page}</h1><p className="subheading">{page === 'Dashboard' ? 'Your saved portfolio at a glance.' : 'Manage your records securely in one place.'}</p></div>
+      {page === 'Properties' && <button className="primary-btn" data-tour="page-primary" onClick={() => propertyEditor()}><Plus size={18} />Add property</button>}
+      {page === 'Tenants' && <button className="primary-btn" data-tour="page-primary" onClick={() => tenantEditor()}><Plus size={18} />Add tenant</button>}
+      {page === 'Leases' && <button className="primary-btn" data-tour="page-primary" onClick={() => leaseEditor()}><Plus size={18} />Add lease</button>}
+      {page === 'Transactions' && <button className="primary-btn" data-tour="page-primary" onClick={() => monthlyEditor()}><Plus size={18} />Add monthly entry</button>}
+      {page === 'Documents' && <button className="primary-btn" data-tour="page-primary" disabled={busy} onClick={() => uploadRef.current?.click()}><Plus size={18} />{busy ? 'Uploading…' : 'Upload document'}</button>}
+      {page === 'Reports' && <button className="secondary-btn" data-tour="page-primary" onClick={exportReport}>Export CSV</button>}
     </div>
     {error && <div className="error-banner" role="alert">{error}<button className="text-btn" onClick={() => setError('')}>Dismiss</button></div>}
     {busy && <p className="action-guidance" role="status">Processing your request. Upload, delete and sign-out actions are temporarily unavailable to avoid conflicting changes.</p>}
     {page === 'Leases' && <p className="action-guidance">Create a property, a rentable unit and a tenant before adding a lease. Occupancy follows confirmed lease dates; a contact on file alone does not mark a unit rented. Set the agreed deposit in the lease, then use Record deposit to track money received or returned.</p>}
     {page === 'Transactions' && !activeProperties.length && <p className="action-guidance">Add or restore a property in Properties to enable monthly entries.</p>}
-    {page !== 'Settings' && page !== 'Guide' && <div className="toolbar live-toolbar"><label className="list-search"><Search size={18} /><input aria-label="Search this page" value={query} placeholder={page === 'Documents' ? 'Search filename, tenant, address…' : 'Search this page…'} onChange={e => setQuery(e.target.value)} /></label>{query && <button className="text-btn" onClick={() => setQuery('')}>Clear search</button>}
+    {page !== 'Settings' && page !== 'Guide' && page !== 'Admin' && <div className="toolbar live-toolbar"><label className="list-search"><Search size={18} /><input aria-label="Search this page" value={query} placeholder={page === 'Documents' ? 'Search filename, tenant, address…' : 'Search this page…'} onChange={e => setQuery(e.target.value)} /></label>{query && <button className="text-btn" onClick={() => setQuery('')}>Clear search</button>}
       {['Dashboard', 'Transactions', 'Reports', 'Documents'].includes(page) && selectProperty}
       {page === 'Dashboard' && <><label className="control period-filter">View<select aria-label="View" value={dashboardPeriod} onChange={e => setDashboardPeriod(e.target.value)}><option value="month">Monthly</option><option value="year">Year / year to date</option></select></label>{periodDateFilter(dashboardPeriod === 'year', selectedYear, setDashboardYear, 'Year')}</>}
       {page === 'Transactions' && <><label className="control period-filter">View<select aria-label="Transactions view" value={transactionsPeriod} onChange={e => setTransactionsPeriod(e.target.value)}><option value="month">Monthly</option><option value="year">Year / year to date</option></select></label>{periodDateFilter(transactionsPeriod === 'year', transactionsSelectedYear, setTransactionsYear, 'Transactions year')}</>}
@@ -307,7 +331,8 @@ export default function App() {
       return (!kind || d.kind === kind) && (!scope || String(p?.id) === scope) && match(query, d.filename, d.notes, p?.name, p?.address, state.tenants.find(t => t.id === d.tenant_id)?.name)
     }).map(d => <div className="live-row" key={d.id}><div><button className="document-open" onClick={() => setPreview(d)} aria-label={'Open ' + d.filename}>{d.filename}</button><small>{d.kind} · {Math.ceil(d.size / 1024)} KB · {d.created_at}</small><small>{propertyName(d.property_id)} · {state.tenants.find(t => t.id === d.tenant_id)?.name || 'No tenant assigned'}</small></div><Actions name={d.filename} actions={[{ label: 'View document', run: () => setPreview(d) }, { label: 'Edit details', run: () => documentEditor(d) }, { label: 'Download', run: () => { window.location.href = '/api/documents/' + d.id + '/download' } }, { label: 'Delete', run: () => { if (window.confirm('Remove this document? It will no longer appear or be downloadable.')) void action('/documents/' + d.id, 'DELETE') } }]} /></div>)}{!state.documents.length && <Empty>No documents uploaded yet.</Empty>}</section>}
     {page === 'Reports' && <><p className="action-guidance">Showing {reportLabel}. The property filter and search also apply. Export CSV downloads exactly these matching entries; deposits are excluded.</p>{chart(true)}<section className="card page-list report-comparison"><h2>Property comparison</h2><p>{reportLabel} · deposits excluded · {reportRows.length} matching entries</p>{state.properties.filter(p => (!scope || String(p.id) === scope) && reportRows.some(r => r.property_id === p.id)).map(p => { const list = reportRows.filter(r => r.property_id === p.id); return <div className="live-row" key={p.id}><strong>{p.name}</strong><span>{currency(list.reduce((sum, r) => sum + r.amounts[0] - totalExpense(r), 0))}</span></div> })}{!reportRows.length && <Empty>No records match the selected report filter.</Empty>}<div className="report-print-actions"><button className="secondary-btn" onClick={() => window.print()}>Print / save as PDF</button></div></section></>}
-    {page === 'Settings' && <section className="card page-list"><h2>Profile & financial preferences</h2><p>{state.settings.name} · {state.settings.email}</p><p>{state.settings.currency} · {state.settings.timezone}</p><p>Categories: {state.categories.map(c => c.name).join(', ')}</p><button className="primary-btn" onClick={settingsEditor}>Edit settings</button><h3>Account security</h3><p>Verification codes are emailed to your account address. Email changes also require a code from the new address.</p><div className="toolbar-actions"><button className="secondary-btn" onClick={() => setAccountMode('change-email')}>Change email</button><button className="secondary-btn" onClick={() => setAccountMode('change-password')}>Change password</button></div>{accountMode && <AccountFlow key={accountMode} mode={accountMode} currentEmail={state.settings.email} cancel={() => setAccountMode(null)} done={message => { setAccountMode(null); setAuthenticated(false); setData(null); setCsrf(''); setNotice(message) }} />}</section>}
+    {page === 'Settings' && <section className="card page-list"><h2>Profile & financial preferences</h2><p>{state.settings.name} · {state.settings.email}</p><p>{state.settings.currency} · {state.settings.timezone}</p><p>Categories: {state.categories.map(c => c.name).join(', ')}</p><button className="primary-btn" data-tour="settings" onClick={settingsEditor}>Edit settings</button><h3>Account security</h3><p>Verification codes are emailed to your account address. Email changes also require a code from the new address.</p><div className="toolbar-actions"><button className="secondary-btn" onClick={() => setAccountMode('change-email')}>Change email</button><button className="secondary-btn" onClick={() => setAccountMode('change-password')}>Change password</button></div>{accountMode && <AccountFlow key={accountMode} mode={accountMode} currentEmail={state.settings.email} cancel={() => setAccountMode(null)} done={message => { setAccountMode(null); setAuthenticated(false); setRole(null); setData(null); setCsrf(''); setNotice(message) }} />}</section>}
+    {page === 'Admin' && role === 'admin' && <AdminPanel />}
     {page === 'Guide' && <section className="card page-list"><h2>Quick-start guide</h2>{[
       ['Properties', 'Add a building or commercial property, then open Units & details to create each rentable space. Use Premises for a commercial space with no apartment number.'],
       ['Tenants', 'Add tenant contact details, including emergency contacts.'],
@@ -317,22 +342,23 @@ export default function App() {
       ['Reports', 'Review saved monthly profit, export CSV, or print to PDF.'],
       ['Settings', 'Update your name, timezone and category labels. Use email codes to change your account email or password. Currency is locked once financial history exists.'],
     ].map(([target, description]) => <article className="guide-step" key={target}><h3>{target}</h3><p>{description}</p><button className="secondary-btn" onClick={() => navigate(target)}>Open {target}</button></article>)}<p>All records and uploads are saved on the server. Automated backups must be configured by the server operator.</p></section>}
-    </div></main>{preview && <DocumentPreview key={preview.id} file={preview} close={() => setPreview(null)} />}{edit && <Editor edit={edit} close={() => setEdit(null)} />}{notice && <div className="toast" role="status">{notice}</div>}
+    </div></main>{preview && <DocumentPreview key={preview.id} file={preview} close={() => setPreview(null)} />}{edit && <Editor edit={edit} close={() => setEdit(null)} />}{notice && <div className="toast" role="status">{notice}</div>}{tourStep !== null && <ProductTour step={tourStep} steps={tourSteps} onBack={() => moveTour(tourStep - 1)} onNext={() => moveTour(tourStep + 1)} onClose={() => setTourStep(null)} />}
   </div>
 }
 
-function Login({ onLogin }: { onLogin: () => Promise<void> }) {
+function Login({ onLogin }: { onLogin: (role: 'owner' | 'admin') => Promise<void> }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [configured, setConfigured] = useState(true)
   const [emailReady, setEmailReady] = useState(false)
   const [mode, setMode] = useState<AccountMode | null>(null)
   const [message, setMessage] = useState('')
+  const [loginKind, setLoginKind] = useState<'owner' | 'admin'>('owner')
   useEffect(() => { api<{ configured: boolean; email_ready: boolean }>('/auth/status').then(r => { setConfigured(r.configured); setEmailReady(r.email_ready) }).catch(() => setError('Backend unavailable. Start the API server and retry.')) }, [])
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); setBusy(true); setError('')
     const form = new FormData(e.currentTarget)
-    try { const response = await api<{ csrf: string }>('/auth/login', 'POST', { email: text(form, 'email'), password: String(form.get('password')) }); setCsrf(response.csrf); await onLogin() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+    try { const response = await api<{ csrf: string; role: 'owner' | 'admin' }>(loginKind === 'admin' ? '/auth/admin/login' : '/auth/login', 'POST', { email: text(form, 'email'), password: String(form.get('password')) }); setCsrf(response.csrf); await onLogin(response.role) } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
-  return <main className="auth-shell">{mode ? <AccountFlow mode={mode} cancel={() => setMode(null)} done={notice => { setMessage(notice); setMode(null); if (mode === 'signup') setConfigured(true) }} /> : <form className="card auth-card" onSubmit={submit}><div className="brand auth-brand"><Home /> Havenly</div><h1>Your portfolio, in one place.</h1><p>Sign in to manage your properties and financial records.</p>{!configured && <p className="action-guidance">Create the single owner account with an email verification code.</p>}{!emailReady && <p className="action-guidance">Email delivery needs server setup. Ask the server operator to configure Brevo, or use the local owner command described in the README.</p>}{message && <p role="status" className="action-guidance">{message}</p>}<label>Email<input required autoComplete="username" name="email" type="email" /></label><label>Password<input required autoComplete="current-password" name="password" type="password" /></label>{error && <p role="alert" className="form-error">{error}</p>}<button className="primary-btn" disabled={busy || !configured}>{busy ? 'Signing in…' : 'Sign in'}</button><div className="account-links">{!configured && <button type="button" className="text-btn" disabled={!emailReady} onClick={() => setMode('signup')}>Create account</button>}{configured && <button type="button" className="text-btn" disabled={!emailReady} onClick={() => setMode('reset')}>Forgot password?</button>}</div></form>}</main>
+  return <main className="auth-shell">{mode ? <AccountFlow mode={mode} cancel={() => setMode(null)} done={notice => { setMessage(notice); setMode(null); if (mode === 'signup') setConfigured(true) }} /> : <form className="card auth-card" onSubmit={submit}><div className="brand auth-brand"><Home /> Havenly</div><h1>{loginKind === 'admin' ? 'Administrator sign in' : 'Your portfolio, in one place.'}</h1><p>{loginKind === 'admin' ? 'Use your separately provisioned administrator credentials.' : 'Sign in to manage your properties and financial records.'}</p>{loginKind === 'owner' && !configured && <p className="action-guidance">Create the single owner account with an email verification code.</p>}{loginKind === 'owner' && !emailReady && <p className="action-guidance">Email delivery needs server setup. Ask the server operator to configure Brevo, or use the local owner command described in the README.</p>}{message && <p role="status" className="action-guidance">{message}</p>}<label>{loginKind === 'admin' ? 'Administrator email' : 'Email'}<input required autoComplete="username" name="email" type="email" /></label><label>Password<input required autoComplete="current-password" name="password" type="password" /></label>{error && <p role="alert" className="form-error">{error}</p>}<button className="primary-btn" disabled={busy || (loginKind === 'owner' && !configured)}>{busy ? 'Signing in…' : loginKind === 'admin' ? 'Sign in as administrator' : 'Sign in'}</button><div className="account-links">{loginKind === 'owner' ? <><button type="button" className="text-btn" onClick={() => { setLoginKind('admin'); setError(''); setMessage('') }}>Administrator sign in</button>{!configured && <button type="button" className="text-btn" disabled={!emailReady} onClick={() => setMode('signup')}>Create account</button>}{configured && <button type="button" className="text-btn" disabled={!emailReady} onClick={() => setMode('reset')}>Forgot password?</button>}</> : <button type="button" className="text-btn" onClick={() => { setLoginKind('owner'); setError('') }}>Back to owner sign in</button>}</div></form>}</main>
 }

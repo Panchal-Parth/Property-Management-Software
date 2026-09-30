@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from db import BASE, UPLOADS, connect, migrate, rows
 from schemas import DocumentIn, DepositIn, LeaseIn, Login, MonthlyIn, PropertyIn, SettingsIn, TenantIn, UnitIn
-from schemas import CodeConfirm, EmailChange, EmailRequest, NotificationDismissIn, PasswordChange, PasswordReset, SignupRequest
+from schemas import AdminAccountUpdate, CodeConfirm, EmailChange, EmailRequest, NotificationDismissIn, PasswordChange, PasswordReset, SignupRequest
 import email_delivery
 from security import password_hash, token_hash, verify_password
 
@@ -88,8 +88,24 @@ def database(request: Request):
 def require_owner(request: Request, c=Depends(database)):
     token = request.cookies.get(COOKIE, "")
     session = c.execute("SELECT * FROM sessions WHERE token_hash=? AND expires>?", (token_hash(token), int(time.time()))).fetchone()
+    role = "owner"
+    if not session:
+        admin = c.execute("SELECT * FROM admin_sessions WHERE token_hash=? AND expires>?", (token_hash(token), int(time.time()))).fetchone()
+        if admin:
+            session = {"token_hash": admin["token_hash"], "owner_id": 1, "csrf": admin["csrf"], "expires": admin["expires"]}
+            role = "admin"
     if not session:
         raise HTTPException(401, "Sign in to continue.")
+    if request.method not in ("GET", "HEAD") and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), session["csrf"]):
+        raise HTTPException(403, "Session verification failed. Refresh and try again.")
+    return {**dict(session), "role": role}
+
+
+def require_admin(request: Request, c=Depends(database)):
+    token = request.cookies.get(COOKIE, "")
+    session = c.execute("SELECT * FROM admin_sessions WHERE token_hash=? AND expires>?", (token_hash(token), int(time.time()))).fetchone()
+    if not session:
+        raise HTTPException(403, "Administrator access required.")
     if request.method not in ("GET", "HEAD") and not secrets.compare_digest(request.headers.get("x-csrf-token", ""), session["csrf"]):
         raise HTTPException(403, "Session verification failed. Refresh and try again.")
     return dict(session)
@@ -262,19 +278,90 @@ def login(body: Login, request: Request, response: Response, c=Depends(database)
     c.execute("INSERT INTO sessions VALUES (?,?,?,?)", (token_hash(token), 1, csrf, now + 43200))
     c.execute("DELETE FROM login_attempts WHERE address=?", (address,))
     response.set_cookie(COOKIE, token, httponly=True, secure=PRODUCTION, samesite="strict", max_age=43200, path="/")
-    return {"csrf": csrf}
+    return {"csrf": csrf, "role": "owner"}
+
+
+@app.post("/api/auth/admin/login")
+def admin_login(body: Login, request: Request, response: Response, c=Depends(database)):
+    now = int(time.time())
+    address = request.client.host if request.client else "unknown"
+    c.execute("DELETE FROM login_attempts WHERE attempted_at<?", (now - 900,))
+    if c.execute("SELECT count(*) FROM login_attempts WHERE address=?", (address,)).fetchone()[0] >= 10:
+        raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+    c.execute("INSERT INTO login_attempts VALUES (?,?)", (address, now))
+    c.commit()
+    admin = c.execute("SELECT * FROM admins WHERE id=1").fetchone()
+    encoded = admin["password_hash"] if admin else password_hash("unconfigured-admin-account")
+    valid = verify_password(body.password, encoded)
+    if not admin or admin["email"].casefold() != body.email.strip().casefold() or not valid:
+        raise HTTPException(401, "Email or password is incorrect.")
+    token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    c.execute("DELETE FROM admin_sessions WHERE expires<=?", (now,))
+    c.execute("INSERT INTO admin_sessions VALUES (?,?,?,?)", (token_hash(token), 1, csrf, now + 1800))
+    c.execute("DELETE FROM login_attempts WHERE address=?", (address,))
+    response.set_cookie(COOKIE, token, httponly=True, secure=PRODUCTION, samesite="strict", max_age=1800, path="/")
+    return {"csrf": csrf, "role": "admin"}
 
 
 @app.get("/api/auth/session")
-def session(owner=Depends(require_owner)):
-    return {"csrf": owner["csrf"]}
+def session(request: Request, c=Depends(database)):
+    token = request.cookies.get(COOKIE, "")
+    digest, now = token_hash(token), int(time.time())
+    owner = c.execute("SELECT csrf FROM sessions WHERE token_hash=? AND expires>?", (digest, now)).fetchone()
+    if owner:
+        return {"csrf": owner["csrf"], "role": "owner"}
+    admin = c.execute("SELECT csrf FROM admin_sessions WHERE token_hash=? AND expires>?", (digest, now)).fetchone()
+    if admin:
+        return {"csrf": admin["csrf"], "role": "admin"}
+    raise HTTPException(401, "Sign in to continue.")
 
 
 @app.post("/api/auth/logout")
-def logout(response: Response, owner=Depends(require_owner), c=Depends(database)):
-    c.execute("DELETE FROM sessions WHERE token_hash=?", (owner["token_hash"],))
+def logout(request: Request, response: Response, c=Depends(database)):
+    token = request.cookies.get(COOKIE, "")
+    digest = token_hash(token)
+    owner = c.execute("SELECT csrf FROM sessions WHERE token_hash=? AND expires>?", (digest, int(time.time()))).fetchone()
+    admin = c.execute("SELECT csrf FROM admin_sessions WHERE token_hash=? AND expires>?", (digest, int(time.time()))).fetchone()
+    session = owner or admin
+    if not session:
+        raise HTTPException(401, "Sign in to continue.")
+    if not secrets.compare_digest(request.headers.get("x-csrf-token", ""), session["csrf"]):
+        raise HTTPException(403, "Session verification failed. Refresh and try again.")
+    c.execute("DELETE FROM sessions WHERE token_hash=?", (digest,))
+    c.execute("DELETE FROM admin_sessions WHERE token_hash=?", (digest,))
     response.delete_cookie(COOKIE, path="/", secure=PRODUCTION, httponly=True, samesite="strict")
     return {"ok": True}
+
+
+@app.get("/api/admin/account")
+def admin_account(admin=Depends(require_admin), c=Depends(database)):
+    owner = c.execute("SELECT email FROM owners WHERE id=1").fetchone()
+    administrator = c.execute("SELECT email FROM admins WHERE id=?", (admin["admin_id"],)).fetchone()
+    return {"owner_email": owner["email"] if owner else None, "admin_email": administrator["email"]}
+
+
+@app.put("/api/admin/account")
+def admin_update_account(body: AdminAccountUpdate, admin=Depends(require_admin), c=Depends(database)):
+    administrator = c.execute("SELECT password_hash FROM admins WHERE id=?", (admin["admin_id"],)).fetchone()
+    if not administrator or not verify_password(body.admin_password, administrator["password_hash"]):
+        raise HTTPException(403, "Administrator password is incorrect.")
+    owner = c.execute("SELECT email FROM owners WHERE id=1").fetchone()
+    if not owner:
+        raise HTTPException(409, "The owner account has not been created yet.")
+    changes = []
+    if body.email is not None and not hmac.compare_digest(body.email.casefold(), owner["email"].casefold()):
+        c.execute("UPDATE owners SET email=? WHERE id=1", (body.email,))
+        changes.append("email")
+    if body.password is not None:
+        c.execute("UPDATE owners SET password_hash=? WHERE id=1", (password_hash(body.password),))
+        changes.append("password")
+    if not changes:
+        raise HTTPException(422, "Enter a different email address or a new password.")
+    c.execute("DELETE FROM sessions")
+    c.execute("DELETE FROM email_challenges")
+    action = "owner_email_and_password_changed" if len(changes) == 2 else f"owner_{changes[0]}_changed"
+    c.execute("INSERT INTO admin_audit(admin_id,action) VALUES (?,?)", (admin["admin_id"], action))
+    return {"ok": True, "message": "Owner credentials updated. All owner sessions were signed out."}
 
 
 @app.get("/api/state")

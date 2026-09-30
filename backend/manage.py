@@ -24,6 +24,7 @@ def backup(destination):
         for (name,) in c.execute("SELECT storage_name FROM documents"):
             shutil.copy2(UPLOADS / name, destination / "uploads" / name)
         c.execute("DELETE FROM sessions")
+        c.execute("DELETE FROM admin_sessions")
         c.execute("DELETE FROM login_attempts")
         c.commit()
     manifest = {}
@@ -77,6 +78,8 @@ def main():
     sub.add_parser("migrate")
     sub.add_parser("create-owner")
     sub.add_parser("reset-password")
+    sub.add_parser("create-admin")
+    sub.add_parser("reset-admin-password")
     b = sub.add_parser("backup"); b.add_argument("destination")
     r = sub.add_parser("restore"); r.add_argument("source"); r.add_argument("destination")
     i = sub.add_parser("import-legacy"); i.add_argument("source")
@@ -86,7 +89,28 @@ def main():
         print("Verified backup restored to a NEW directory. Point HAVENLY_DATA_DIR there before restarting.")
         return
     migrate()
-    if args.command in ("create-owner", "reset-password"):
+    if args.command in ("create-admin", "reset-admin-password"):
+        with connect() as c:
+            if not c.execute("SELECT 1 FROM owners WHERE id=1").fetchone():
+                raise SystemExit("Create the owner account before provisioning an administrator.")
+            existing = c.execute("SELECT 1 FROM admins WHERE id=1").fetchone()
+            if args.command == "create-admin" and existing:
+                raise SystemExit("Admin already exists; use reset-admin-password.")
+            if args.command == "reset-admin-password" and not existing:
+                raise SystemExit("Create an admin first.")
+            email = input("Admin email: ").strip().lower() if not existing else None
+            password = getpass.getpass("Admin password (at least 12 characters): ")
+            if len(password) < 12 or len(password) > 256 or password != getpass.getpass("Confirm password: "):
+                raise SystemExit("Passwords must match and contain 12–256 characters.")
+            if not existing:
+                if not email or "@" not in email:
+                    raise SystemExit("Enter a valid admin email.")
+                c.execute("INSERT INTO admins(id,email,password_hash) VALUES (1,?,?)", (email, password_hash(password)))
+            else:
+                c.execute("UPDATE admins SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE id=1", (password_hash(password),))
+            c.execute("DELETE FROM admin_sessions")
+        print("Admin credentials saved; old admin sessions revoked.")
+    elif args.command in ("create-owner", "reset-password"):
         with connect() as c:
             existing = c.execute("SELECT 1 FROM owners").fetchone()
             if args.command == "create-owner" and existing:

@@ -1,0 +1,26 @@
+.tour { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+.tour-backdrop { position: absolute; inset: 0; background: transparent; pointer-events: auto; }
+.tour-spotlight { position: fixed; z-index: 1; border: 3px solid #ee9d72; border-radius: 12px; box-shadow: 0 0 0 9999px #132b3978, 0 0 0 5px #ee9d7238; transition: inset .22s ease, width .22s ease, height .22s ease; pointer-events: none; }
+.tour-card { position: fixed; z-index: 2; width: min(380px, calc(100vw - 32px)); padding: 22px; border: 1px solid #dbe5e1; border-radius: 14px; background: white; color: #273c43; box-shadow: 0 22px 65px #10292f52; pointer-events: auto; outline: none; }
+.tour-card-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.tour-card-top span, .tour-count { color: #66807d; font-size: 11px; font-weight: 700; letter-spacing: .11em; }
+.tour-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: #edf4f2; color: #416f73; cursor: pointer; }
+.tour-progress { height: 4px; margin: 15px 0 18px; overflow: hidden; border-radius: 4px; background: #e5ece9; }
+.tour-progress i { display: block; height: 100%; border-radius: inherit; background: #ee9d72; transition: width .2s ease; }
+.tour-count { margin: 0 0 8px; }
+.tour-card h2 { margin: 0; font-size: 23px; line-height: 1.25; }
+.tour-card > p:not(.tour-count) { margin: 12px 0 22px; color: #5e706e; font-size: 15px; line-height: 1.6; }
+.tour-actions, .tour-actions > div { display: flex; align-items: center; gap: 9px; }
+.tour-actions { justify-content: space-between; }
+.tour-actions .primary-btn, .tour-actions .secondary-btn { min-height: 40px; justify-content: center; }
+@media(max-width: 700px) {
+  .tour-card { left: 16px; bottom: 16px; max-height: min(440px, calc(100vh - 32px)); overflow-y: auto; }
+  .tour-spotlight { border-radius: 9px; }
+}
+@media(max-width: 390px) {
+  .tour-actions { align-items: stretch; flex-direction: column-reverse; }
+  .tour-actions > div { width: 100%; }
+  .tour-actions > div button { flex: 1; }
+  .tour-actions > .text-btn { align-self: center; }
+}
+@media(prefers-reduced-motion: reduce) { .tour-spotlight, .tour-progress i { transition: none; } }

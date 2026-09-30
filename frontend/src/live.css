@@ -2,6 +2,14 @@
 .account-flow { width: min(100%, 520px); }
 .account-flow small { display: block; margin-top: 6px; color: var(--text-secondary); }
 .account-links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
+.admin-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.admin-heading .eyebrow { margin-bottom: 4px; }
+.admin-heading h2 { margin: 0; }
+.admin-panel form { max-width: 720px; }
+.admin-panel label { display: block; margin: 20px 0; color: var(--ink); font-size: 16px; font-weight: 600; }
+.admin-panel input { display: block; width: 100%; min-height: 46px; margin-top: 8px; padding: 12px; border: 1px solid #9fb4ae; border-radius: 9px; color: var(--ink); font: inherit; }
+.admin-panel input:focus-visible { outline: 0; border-color: #416f73; box-shadow: 0 0 0 3px #416f7326; }
+.admin-panel small { display: block; margin-top: 6px; color: var(--text-secondary); font-size: 14px; font-weight: 400; }
 .auth-card { width: min(100%, 480px); padding: 36px; }
 .auth-brand { color: var(--ink); margin: 0 0 24px; }
 .auth-card h1 { font-size: 30px; line-height: 1.25; }
