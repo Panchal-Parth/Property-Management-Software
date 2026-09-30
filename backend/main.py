@@ -52,6 +52,7 @@ async def headers(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     if request.url.path.startswith("/api"):
         response.headers["Cache-Control"] = "no-store"
     if PRODUCTION:

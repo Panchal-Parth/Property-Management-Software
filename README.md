@@ -1,3 +1,27 @@
+## Privacy and encryption
+
+Production traffic is encrypted with HTTPS at Caddy; the backend is bound to
+loopback and must not be exposed directly. Passwords are stored as salted scrypt
+hashes, session cookies are HttpOnly/Secure/SameSite in production, mutating API
+requests use CSRF and origin checks, API responses are marked `no-store`, and
+private documents require an authenticated download. The app does not log API
+request or response bodies. Encrypted restic backups are separate from live-data
+encryption.
+
+HTTPS protects data while it travels over the network, not after the browser has
+received it. DevTools can inspect request and response data because the browser
+must decrypt and render that data. Gmail and Facebook have the same basic browser
+boundary: standard web sessions use HTTPS and server-side controls; optional
+end-to-end encryption is a different mode where the service cannot read the
+protected content. Encrypting payloads again in JavaScript would not hide them
+from the browser running that JavaScript.
+
+The live SQLite database and uploads are permission-restricted but are not
+application-encrypted. Before storing real data in production, place
+`HAVENLY_DATA_DIR` on encrypted server storage and protect its unlock key
+separately. Verify reboot/recovery procedures and retain encrypted off-site
+backups. If the host or storage layer is compromised while mounted, filesystem
+encryption alone does not protect data from that running host.
 # Havenly
 
 Single-owner rental management: React/TypeScript + FastAPI + SQLite. The frontend

@@ -349,7 +349,10 @@ class IntegrationTests(unittest.TestCase):
                 self.assertIn("httponly", cookie)
                 self.assertIn("samesite=strict", cookie)
                 self.assertIn("frame-ancestors 'none'", response.headers["content-security-policy"])
-                self.assertEqual(client.get("/api/state").status_code, 200)
+                state_response = client.get("/api/state")
+                self.assertEqual(state_response.status_code, 200)
+                self.assertEqual(state_response.headers["cache-control"], "no-store")
+                self.assertEqual(state_response.headers["permissions-policy"], "camera=(), microphone=(), geolocation=(), payment=()")
                 self.assertEqual(client.get("/docs").status_code, 404)
                 self.assertEqual(client.get("/openapi.json").status_code, 404)
         finally:

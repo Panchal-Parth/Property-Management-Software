@@ -1,3 +1,9 @@
+Before admitting real portfolio data, place `/var/lib/havenly` on encrypted
+server storage and verify the provider's encryption and key-recovery behavior.
+Keep the unlock key outside that data volume; document how the service is
+recovered after a reboot without weakening access controls. File permissions
+(`0700` directory, `0600` database) and encrypted restic backups do not encrypt
+the live SQLite database or uploads.
 # Production deployment: DigitalOcean, Backblaze B2, Brevo
 
 **Status:** templates only. Nothing here provisions a server, domain, email sender,

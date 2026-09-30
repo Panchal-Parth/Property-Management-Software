@@ -36,6 +36,13 @@
 .control { display: flex; flex: 0 1 210px; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; font-size: 14px; color: var(--text-secondary); }
 .control.property-filter { flex-basis: 300px; max-width: 320px; }
 .control.year-filter { flex-basis: 120px; max-width: 150px; }
+.period-date-slot { position: relative; flex: 0 1 210px; min-width: 0; height: 72px; }
+.period-date-slot .control { position: absolute; inset: 0; width: 100%; max-width: none; transition: opacity .16s ease, transform .16s ease; }
+.period-date-slot .control:not(.is-active) { opacity: 0; transform: translateY(3px); pointer-events: none; }
+.period-date-slot .control.is-active { opacity: 1; transform: translateY(0); }
+.brand-button { padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.brand-button:hover { color: #dcebe6; }
+.brand-button:focus-visible { outline: 2px solid #ee9d72; outline-offset: 4px; border-radius: 4px; }
 .control input, .control select { font: inherit; font-size: 16px; background: white; color: var(--ink); border: 1px solid #9fb4ae; border-radius: 9px; min-height: 46px; width: 210px; max-width: 320px; transition: border-color .15s, box-shadow .15s, background-color .15s; }
 .control input { padding: 11px 12px 11px 13px; }
 .control select { padding: 11px 42px 11px 13px; }
@@ -146,6 +153,7 @@ select:not([multiple]):focus-visible { outline: 0; border-color: #416f73; box-sh
 .scroll-table td { vertical-align: top; }
 .report-print-actions { display: flex; justify-content: flex-end; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 @media(max-width: 700px) {
+  .period-date-slot { width: 100%; flex-basis: 100%; }
   .lease-row { grid-template-columns: minmax(0, 1fr) 32px; }
   .lease-finances { grid-column: 1 / -1; grid-row: 2; }
   .lease-row > .property-actions { grid-column: 2; grid-row: 1; }
